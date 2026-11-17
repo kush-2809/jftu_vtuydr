@@ -15,3 +15,8 @@ void uiDisplayTimeoutTick();
 void uiDisplayDimTick();
 void uiDisplayDateTimeTick();
 void uiDisplayNTPTick();
+void uiTelemetryDraw();
+void uiTelemetryTick();
+
+void uiDisplayDateTimeMenuDraw();
+void uiDisplayDateTimeMenuTick();

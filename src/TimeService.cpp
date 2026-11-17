@@ -56,25 +56,28 @@ int32_t timeGetTimezoneMinutes() { return tzOffsetMin; }
 String timeFormatHHMM() {
   if (!timeValid) return "--:--";
   struct tm tmv; time_t t = nowLocal(); localtime_r(&t, &tmv);
-  char buf[8]; snprintf(buf, sizeof(buf), "%02d:%02d", tmv.tm_hour, tmv.tm_min);
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%02d:%02d", tmv.tm_hour, tmv.tm_min);
   return String(buf);
 }
 String dateFormatDMY() {
   if (!timeValid) return "--/--/----";
   struct tm tmv; time_t t = nowLocal(); localtime_r(&t, &tmv);
-  char buf[16]; snprintf(buf, sizeof(buf), "%02d/%02d/%04d",
-                         tmv.tm_mday, tmv.tm_mon + 1, tmv.tm_year + 1900);
-  return String(buf);
-}
-String timeFormatFull() {
-  if (!timeValid) return "waiting for time...";
-  struct tm tmv; time_t t = nowLocal(); localtime_r(&t, &tmv);
-  char buf[24]; snprintf(buf, sizeof(buf), "%02d/%02d/%04d %02d:%02d:%02d",
-                         tmv.tm_mday, tmv.tm_mon + 1, tmv.tm_year + 1900,
-                         tmv.tm_hour, tmv.tm_min, tmv.tm_sec);
+  char buf[32];
+  snprintf(buf, sizeof(buf), "%02d/%02d/%04d",
+           tmv.tm_mday, tmv.tm_mon + 1, tmv.tm_year + 1900);
   return String(buf);
 }
 
+String timeFormatFull() {
+  if (!timeValid) return "waiting for time...";
+  struct tm tmv; time_t t = nowLocal(); localtime_r(&t, &tmv);
+  char buf[40];
+  snprintf(buf, sizeof(buf), "%02d/%02d/%04d %02d:%02d:%02d",
+           tmv.tm_mday, tmv.tm_mon + 1, tmv.tm_year + 1900,
+           tmv.tm_hour, tmv.tm_min, tmv.tm_sec);
+  return String(buf);
+}
 void timeSetManual(int year, int month, int day, int hour, int minute, int second) {
   struct tm tmv = {};
   tmv.tm_year = year - 1900; tmv.tm_mon = month - 1; tmv.tm_mday = day;

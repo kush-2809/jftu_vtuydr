@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <math.h>
 #include "WiFiManager.h"
+#include "ClockHeader.h"
 
 int getSignalLevel(int rssi) {
   if (rssi >= -70) return 4;
@@ -58,6 +59,7 @@ void drawHeader() {
   int wifiLevel = 0;
   if (WiFi.status() == WL_CONNECTED) wifiLevel = getSignalLevel(WiFi.RSSI());
   drawWifiIcon(W - 17, 14, wifiLevel);
+  drawClockInHeader();
 }
 void drawTankGraphic() {
   const int tankX = 14, tankY = 58, tankW = 88, tankH = 140;

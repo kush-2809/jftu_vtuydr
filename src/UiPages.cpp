@@ -5,7 +5,10 @@
 #include "Scheduler.h"
 #include "DisplayEngine.h"
 #include "SmartTankState.h"
-
+#include "Buzzer.h"           // ← ADD THIS LINE
+#include "Telemetry.h"        // (from the last drop)
+#include "WiFiManager.h"      // (from the last drop)
+#include <math.h>  
 // Shared drawing helpers
 static void pageHeader(const char* title) {
   const Theme& t = themeGet();
@@ -37,25 +40,28 @@ void uiAlarmTimerTick() {
   if (dir != 0) timerDraftMin = (uint32_t)clampI((int)timerDraftMin + dir, 1, 600);
   if (uiConsumePress()) { timerStart(timerDraftMin); uiPop(); }
 }
-
 void uiAlarmTimerDraw() {
   const Theme& t = themeGet();
   pageHeader("TIMER");
   canvas.setTextSize(1); canvas.setTextColor(t.muted, t.bg);
   canvas.setCursor(10, 45); canvas.print("RUN PUMP FOR");
   canvas.setTextSize(4); canvas.setTextColor(t.accent, t.bg);
-  canvas.setCursor(10, 70); canvas.printf("%lu", (unsigned long)timerDraftMin);
+  canvas.setCursor(10, 70); canvas.printf("%u", (unsigned)timerDraftMin);
   canvas.setTextSize(2); canvas.setTextColor(t.fg, t.bg);
   canvas.setCursor(90, 88); canvas.print("min");
-  uint32_t remain = timerRemainingSeconds();
+
+  uint32_t remain = timerRemainingSeconds();       // ← re-add this
   if (remain > 0) {
     canvas.setTextSize(2); canvas.setTextColor(t.ok, t.bg);
     canvas.setCursor(10, 140);
-    canvas.printf("RUNNING %02lu:%02lu", remain / 60, remain % 60);
+    canvas.printf("RUNNING %02u:%02u",
+                  (unsigned)(remain / 60),
+                  (unsigned)(remain % 60));
   } else {
     canvas.setTextSize(1); canvas.setTextColor(t.muted, t.bg);
     canvas.setCursor(10, 140); canvas.print("Not running");
   }
+
   pageFooter("ROTATE: ADJUST  PRESS: START  HOLD: BACK");
   canvas.pushSprite(0, 0);
 }
@@ -217,31 +223,79 @@ void uiDisplayDimDraw() {
   pageFooter("ROTATE: ADJUST  PRESS: SAVE  HOLD: BACK");
   canvas.pushSprite(0, 0);
 }
+// ============================================================
+// DISPLAY → DATE & TIME (sub-menu)
+// ============================================================
+static int dtMenuSel = 0;
+static const char* dtMenuLabels[] = {
+  "Set manually",
+  "Sync now (NTP)",
+  "Change NTP server"
+};
+static const int DT_MENU_COUNT = 3;
 
-// ============================================================
-// DISPLAY → DATE & TIME
-// ============================================================
 static int  dtStep = 0;
 static int  dtv[6] = {2026, 1, 1, 0, 0, 0};
 
-void uiDisplayDateTimeTick() {
+void uiDisplayDateTimeMenuTick() {
   int dir = uiConsumeRotation();
   if (uiConsumeLongPress()) { uiPop(); return; }
+  if (dir != 0) {
+    dtMenuSel = (dtMenuSel + (dir > 0 ? 1 : DT_MENU_COUNT - 1)) % DT_MENU_COUNT;
+  }
   if (uiConsumePress()) {
-    dtStep = (dtStep + 1) % 6;
-    if (dtStep == 5) {
-      timeSetManual(dtv[0], dtv[1], dtv[2], dtv[3], dtv[4], dtv[5]);
-      uiPop(); return;
+    switch (dtMenuSel) {
+      case 0: {
+        // Load current values as starting point
+        time_t t = nowLocal(); struct tm tmv;
+        if (timeIsValid()) {
+          localtime_r(&t, &tmv);
+          dtv[0] = tmv.tm_year + 1900; dtv[1] = tmv.tm_mon + 1; dtv[2] = tmv.tm_mday;
+          dtv[3] = tmv.tm_hour;        dtv[4] = tmv.tm_min;    dtv[5] = tmv.tm_sec;
+        }
+        dtStep = 0;
+        uiPush(Page::DisplayDateTime);   // reuse the same page slot for editor
+        // BUT we need to switch mode — handled by the "editor active" flag below
+        break;
+      }
+      case 1: timeRequestNtpSync(); break;
+      case 2: uiPush(Page::DisplayNTP); break;
     }
   }
-  if (dir == 0) return;
-  const int lim[6][2] = {{2020,2099},{1,12},{1,31},{0,23},{0,59},{0,59}};
-  dtv[dtStep] = clampI(dtv[dtStep] + dir, lim[dtStep][0], lim[dtStep][1]);
 }
 
+// The editor sub-page — reached via dtMenuSel 0
+static bool dtEditorActive = false;
+
 void uiDisplayDateTimeDraw() {
+  // If we're not in editor mode, draw the sub-menu
+  if (!dtEditorActive) {
+    const Theme& t = themeGet();
+    pageHeader("DATE & TIME");
+    canvas.setTextSize(1);
+    for (int i = 0; i < DT_MENU_COUNT; i++) {
+      int y = 50 + i * 34;
+      if (i == dtMenuSel) canvas.fillRoundRect(8, y - 2, W - 16, 30, 6, t.selBg);
+      canvas.setTextColor(i == dtMenuSel ? t.selFg : t.fg,
+                          i == dtMenuSel ? t.selBg : t.bg);
+      canvas.setTextSize(2);
+      canvas.setCursor(16, y + 4);
+      canvas.print(dtMenuLabels[i]);
+    }
+    canvas.setTextSize(1);
+    canvas.setTextColor(t.muted, t.bg);
+    canvas.setCursor(10, H - 42);
+    canvas.printf("Now: %s", timeFormatFull().c_str());
+    canvas.setCursor(10, H - 30);
+    canvas.printf("NTP: %s", timeNtpSynced() ? "SYNCED" : "WAITING");
+    pageFooter("ROTATE: MOVE  PRESS: OPEN  HOLD: BACK");
+    canvas.pushSprite(0, 0);
+    return;
+  }
+
+  // ── editor mode ──
   const Theme& t = themeGet();
-  pageHeader("DATE & TIME");
+  pageHeader("SET DATE & TIME");
   canvas.setTextSize(1);
   const char* labels[] = {"Year","Month","Day","Hour","Minute","Second"};
   for (int i = 0; i < 6; i++) {
@@ -259,10 +313,58 @@ void uiDisplayDateTimeDraw() {
   canvas.setTextSize(1); canvas.setTextColor(t.muted, t.bg);
   canvas.setCursor(10, H - 40);
   canvas.printf("Now: %s", timeFormatFull().c_str());
-  pageFooter("ROTATE: EDIT  PRESS: NEXT/SAVE  HOLD: BACK");
+  pageFooter("ROTATE: EDIT  PRESS: NEXT/SAVE  HOLD: CANCEL");
   canvas.pushSprite(0, 0);
 }
 
+void uiDisplayDateTimeTick() {
+  if (!dtEditorActive) {
+    // sub-menu input
+    int dir = uiConsumeRotation();
+    if (uiConsumeLongPress()) { uiPop(); return; }
+    if (dir != 0)
+      dtMenuSel = (dtMenuSel + (dir > 0 ? 1 : DT_MENU_COUNT - 1)) % DT_MENU_COUNT;
+    if (uiConsumePress()) {
+      if (dtMenuSel == 0) {
+        // Load current time
+        if (timeIsValid()) {
+          time_t t = nowLocal(); struct tm tmv; localtime_r(&t, &tmv);
+          dtv[0] = tmv.tm_year + 1900; dtv[1] = tmv.tm_mon + 1; dtv[2] = tmv.tm_mday;
+          dtv[3] = tmv.tm_hour;        dtv[4] = tmv.tm_min;    dtv[5] = tmv.tm_sec;
+        }
+        dtStep = 0;
+        dtEditorActive = true;
+      } else if (dtMenuSel == 1) {
+        timeRequestNtpSync();
+        buzzerBeep(60, buzzerVolume());
+      } else if (dtMenuSel == 2) {
+        uiPush(Page::DisplayNTP);
+      }
+    }
+    return;
+  }
+  // editor input
+  int dir = uiConsumeRotation();
+  if (uiConsumeLongPress()) {
+    dtEditorActive = false;
+    uiPop();
+    return;
+  }
+  if (uiConsumePress()) {
+    dtStep = (dtStep + 1) % 6;
+    if (dtStep == 5) {
+      // Apply
+      timeSetManual(dtv[0], dtv[1], dtv[2], dtv[3], dtv[4], dtv[5]);
+      buzzerBeep(60, buzzerVolume());
+      dtEditorActive = false;
+      uiPop();
+      return;
+    }
+  }
+  if (dir == 0) return;
+  const int lim[6][2] = {{2020,2099},{1,12},{1,31},{0,23},{0,59},{0,59}};
+  dtv[dtStep] = clampI(dtv[dtStep] + dir, lim[dtStep][0], lim[dtStep][1]);
+}
 // ============================================================
 // DISPLAY → NTP SERVER
 // ============================================================
@@ -299,4 +401,61 @@ void uiDisplayNTPDraw() {
   canvas.printf("Now: %s", timeFormatFull().c_str());
   pageFooter("ROTATE: PRESET  PRESS: SAVE+SYNC  HOLD: BACK");
   canvas.pushSprite(0, 0);
+}
+// ============================================================
+// TELEMETRY
+// ============================================================
+
+void uiTelemetryDraw() {
+  const Theme& t = themeGet();
+  pageHeader("TELEMETRY");
+
+  canvas.setTextSize(1);
+
+  auto row = [&](int y, const char* label, const String& value,
+                 uint16_t valueColor) {
+    canvas.setTextColor(t.muted, t.bg);
+    canvas.setCursor(10, y);
+    canvas.print(label);
+    canvas.setTextColor(valueColor, t.bg);
+    canvas.setCursor(130, y);
+    canvas.print(value);
+  };
+
+  uint8_t  cpu   = telemetryCpuPercent();
+  uint8_t  cpu0  = telemetryCpuCore0Percent();
+  uint8_t  cpu1  = telemetryCpuCore1Percent();
+  uint32_t hFree = telemetryHeapFreeKb();
+  uint32_t hUsed = telemetryHeapUsedKb();
+  float    temp  = telemetryChipTempC();
+  uint32_t upSec = telemetryUptimeSeconds();
+
+  uint16_t cpuColor  = cpu  < 40 ? t.ok : cpu  < 75 ? t.warn : t.err;
+  uint16_t tempColor = temp < 50 ? t.ok : temp < 70 ? t.warn : t.err;
+
+  row(44,  "CPU",       String(cpu)  + " %",                     cpuColor);
+  row(62,  "  Core 0",  String(cpu0) + " %",                     t.fg);
+  row(80,  "  Core 1",  String(cpu1) + " %",                     t.fg);
+  row(98,  "RAM free",  String(hFree) + " KB",                   t.fg);
+  row(116, "RAM used",  String(hUsed) + " KB",                   t.fg);
+  row(134, "Chip temp", String(temp, 1) + " C",                  tempColor);
+  row(152, "Uptime",    String(upSec / 3600) + "h " +
+                        String((upSec / 60) % 60) + "m " +
+                        String(upSec % 60) + "s",                t.fg);
+
+  canvas.drawFastHLine(8, 176, W - 16, t.muted);
+
+  row(184, "LoRa RSSI", remoteConnected ? String(lastRSSI) + " dBm" : "--",   t.accent);
+  row(202, "LoRa SNR",  remoteConnected ? String(lastSNR, 1) + " dB" : "--", t.accent);
+  row(220, "Wi-Fi RSSI", wifiManagerIsConnected()
+                          ? String(wifiManagerGetRSSI()) + " dBm" : "--",     t.accent);
+
+  pageFooter("Live - updates 1x/sec - HOLD: BACK");
+  canvas.pushSprite(0, 0);
+}
+
+void uiTelemetryTick() {
+  if (uiConsumeLongPress()) { uiPop(); return; }
+  uiConsumeRotation();    // ignored
+  uiConsumePress();       // ignored
 }

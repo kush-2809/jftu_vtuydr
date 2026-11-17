@@ -16,6 +16,7 @@
 #include "Scheduler.h"
 #include "DisplayEngine.h"
 #include "UiPages.h"
+#include "Telemetry.h"
 
 // All globals are in StateDefinitions.cpp
 // All pages are in Page*.cpp / UiDrawHelpers.cpp / UiPages.cpp
@@ -37,7 +38,7 @@ void drawCurrentScreen() {
     case Page::Network:       uiMenuDraw("NETWORK", 0); return;
     case Page::SystemClean:   uiMenuDraw("SYSTEM CLEAN", 0); return;
     case Page::SystemRetry:   uiMenuDraw("SYSTEM RETRY", 0); return;
-    case Page::Telemetry:     uiPlaceholderDraw("TELEMETRY", "Temp/CPU/RAM"); return;
+   case Page::Telemetry:      uiTelemetryDraw();    return;
     case Page::SystemInfo:    uiSystemInfoDraw(); return;
     case Page::Management:    uiPlaceholderDraw("MANAGEMENT", "Mode + Buzzer"); return;
     case Page::AdminConfig:
@@ -49,7 +50,7 @@ void drawCurrentScreen() {
     case Page::AlarmSleep:      uiAlarmSleepDraw(); return;
     case Page::DisplayTimeout:  uiDisplayTimeoutDraw(); return;
     case Page::DisplayDim:      uiDisplayDimDraw(); return;
-    case Page::DisplayDateTime: uiDisplayDateTimeDraw(); return;
+  
     case Page::DisplayNTP:      uiDisplayNTPDraw(); return;
 
     default: uiPlaceholderDraw("PAGE", "TODO"); return;
@@ -84,7 +85,7 @@ void setup() {
   schedulerInit();
   displayEngineInit();
   wifiManagerBegin();
-
+telemetryInit();
   drawCurrentScreen();
 }
 
@@ -113,7 +114,8 @@ void loop() {
     case Page::AlarmSleep:      uiAlarmSleepTick();      break;
     case Page::DisplayTimeout:  uiDisplayTimeoutTick();  break;
     case Page::DisplayDim:      uiDisplayDimTick();      break;
-    case Page::DisplayDateTime: uiDisplayDateTimeTick(); break;
+   case Page::Telemetry:       uiTelemetryTick();       break;
+case Page::DisplayDateTime: uiDisplayDateTimeTick(); break;
     case Page::DisplayNTP:      uiDisplayNTPTick();      break;
     default: break;
   }

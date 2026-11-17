@@ -38,9 +38,9 @@ void drawDiagnosticsPage() {
   canvas.setTextColor(TFT_CYAN, TFT_BLACK);
   canvas.setTextSize(2); canvas.setCursor(8, 42); canvas.print("DIAGNOSTICS");
   canvas.setTextSize(1); canvas.setTextColor(TFT_WHITE, TFT_BLACK);
-  canvas.setCursor(8, 82);  canvas.printf("Packets received: %lu", packetsReceived);
-  canvas.setCursor(8, 108); canvas.printf("Sensor errors: %lu", sensorErrors);
-  canvas.setCursor(8, 134); canvas.printf("Invalid packets: %lu", invalidPackets);
+  canvas.setCursor(8, 82);  canvas.printf("Packets received: %u", (unsigned)packetsReceived);
+  canvas.setCursor(8, 108); canvas.printf("Sensor errors: %u",   (unsigned)sensorErrors);
+  canvas.setCursor(8, 134); canvas.printf("Invalid packets: %u", (unsigned)invalidPackets);
   canvas.setCursor(8, 160); canvas.printf("Distance: %.1f cm", distanceCm);
   canvas.setCursor(8, 186); canvas.printf("Auto-pend: %s", autoPendingOn ? "YES" : "NO");
   canvas.fillRect(0, H - 19, W, 19, TFT_DARKGREY);

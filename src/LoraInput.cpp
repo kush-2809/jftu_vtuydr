@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include "SmartTankState.h"
 #include "TankSettings.h"
+#include "FeatureControl.h"
 
 #define LORA_SCK  14
 #define LORA_MISO 13
@@ -18,6 +19,13 @@
 static SPIClass loraSPI(FSPI);
 
 void initializeLoRa() {
+  if (!featureLoraEnabled()) {
+    loraInitialized = false;
+    remoteConnected = false;
+    sensorReadingValid = false;
+    waterLevelValid = false;
+    return;
+  }
   loraSPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
   LoRa.setSPI(loraSPI);
   LoRa.setPins(LORA_CS, LORA_RST, LORA_DIO0);
@@ -36,6 +44,7 @@ void initializeLoRa() {
 }
 
 void receiveSensorData() {
+  if (!featureLoraEnabled() || !loraInitialized) return;
   int packetSize = LoRa.parsePacket();
   if (packetSize <= 0) return;
 
@@ -76,7 +85,22 @@ void receiveSensorData() {
 }
 
 void updateConnectionStatus() {
-  remoteConnected = lastPacketMillis != 0 &&
+  remoteConnected = featureLoraEnabled() && lastPacketMillis != 0 &&
                     millis() - lastPacketMillis < REMOTE_TIMEOUT;
   if (!remoteConnected) { sensorReadingValid = false; waterLevelValid = false; }
+}
+
+void setLoraReceiverEnabled(bool enabled) {
+  featureSetLoraEnabled(enabled);
+  if (!enabled) {
+    if (loraInitialized) LoRa.sleep();
+    loraInitialized = false;
+    remoteConnected = false;
+    lastPacketMillis = 0;
+    sensorReadingValid = false;
+    waterLevelValid = false;
+    Serial.println("LoRa receiver disabled from admin configuration");
+    return;
+  }
+  initializeLoRa();
 }

@@ -17,6 +17,8 @@
 #include "DisplayEngine.h"
 #include "UiPages.h"
 #include "Telemetry.h"
+#include "Management.h"
+#include "FeatureControl.h"
 
 // All globals are in StateDefinitions.cpp
 // All pages are in Page*.cpp / UiDrawHelpers.cpp / UiPages.cpp
@@ -30,30 +32,44 @@
 void drawCurrentScreen() {
   if (!displayReady) return;
   switch (uiPage()) {
-    case Page::Dashboard:     drawDashboard(); return;
-    case Page::MainMenu:      uiMenuDraw("MAIN MENU", 0); return;
-    case Page::Alarm:         uiMenuDraw("ALARM", 0); return;
-    case Page::Display:       uiMenuDraw("DISPLAY", 0); return;
-    case Page::Layout:        uiMenuDraw("LAYOUT", 0); return;
-    case Page::Network:       uiMenuDraw("NETWORK", 0); return;
-    case Page::SystemClean:   uiMenuDraw("SYSTEM CLEAN", 0); return;
-    case Page::SystemRetry:   uiMenuDraw("SYSTEM RETRY", 0); return;
-   case Page::Telemetry:      uiTelemetryDraw();    return;
-    case Page::SystemInfo:    uiSystemInfoDraw(); return;
-    case Page::Management:    uiPlaceholderDraw("MANAGEMENT", "Mode + Buzzer"); return;
+    case Page::Dashboard:          drawDashboard(); return;
+    case Page::MainMenu:           uiMenuDraw("MAIN MENU", 0); return;
+    case Page::Alarm:              uiMenuDraw("ALARM", 0); return;
+    case Page::Display:            uiMenuDraw("DISPLAY", 0); return;
+    case Page::Layout:             uiMenuDraw("LAYOUT / THEME", 0); return;
+    case Page::Network:            uiMenuDraw("NETWORK", 0); return;
+    case Page::SystemClean:        uiMenuDraw("SYSTEM CLEAN", 0); return;
+    case Page::Management:         uiMenuDraw("MANAGEMENT", 0); return;
     case Page::AdminConfig:
-      if (!adminUnlocked()) { uiPlaceholderDraw("CONFIG", "LOCKED"); return; }
-      uiPlaceholderDraw("CONFIG", "Admin controls"); return;
+      if (!adminUnlocked()) { uiPlaceholderDraw("CONFIGURATION", "ADMIN ACCESS REQUIRED"); return; }
+      uiMenuDraw("ADMIN CONFIG", 0); return;
 
-    case Page::AlarmTimer:      uiAlarmTimerDraw(); return;
-    case Page::AlarmScheduler:  uiAlarmSchedulerDraw(); return;
-    case Page::AlarmSleep:      uiAlarmSleepDraw(); return;
-    case Page::DisplayTimeout:  uiDisplayTimeoutDraw(); return;
-    case Page::DisplayDim:      uiDisplayDimDraw(); return;
-  
-    case Page::DisplayNTP:      uiDisplayNTPDraw(); return;
+    case Page::Telemetry:          uiTelemetryDraw(); return;
+    case Page::SystemInfo:         uiSystemInfoDraw(); return;
+    case Page::SystemRetry:        uiSystemRetryDraw(); return;
 
-    default: uiPlaceholderDraw("PAGE", "TODO"); return;
+    case Page::AlarmTimer:         uiAlarmTimerDraw(); return;
+    case Page::AlarmScheduler:     uiAlarmSchedulerDraw(); return;
+    case Page::AlarmSleep:         uiAlarmSleepDraw(); return;
+    case Page::DisplayTimeout:     uiDisplayTimeoutDraw(); return;
+    case Page::DisplayDim:         uiDisplayDimDraw(); return;
+    case Page::DisplayDateTime:    uiDisplayDateTimeDraw(); return;
+    case Page::DisplayNTP:         uiDisplayNTPDraw(); return;
+
+    case Page::ManagementMode:     uiManagementModeDraw(); return;
+    case Page::ManagementBuzzer:   uiManagementBuzzerDraw(); return;
+    case Page::NetworkStatus:      uiNetworkStatusDraw(); return;
+    case Page::NetworkWiFi:        uiNetworkWiFiDraw(); return;
+
+    case Page::CleanReboot:
+    case Page::CleanClearCache:
+    case Page::CleanFactoryReset:  uiSystemCleanDraw(); return;
+
+    case Page::AdminTankHeight:    uiAdminTankHeightDraw(); return;
+    case Page::AdminTankCapacity:  uiAdminTankCapacityDraw(); return;
+    case Page::AdminThresholds:    uiAdminThresholdsDraw(); return;
+
+    default: uiPlaceholderDraw("PAGE", "NOT AVAILABLE"); return;
   }
 }
 
@@ -74,10 +90,11 @@ void setup() {
     if (t < themeCount()) themeLoad(t);
   }
   buzzerInit();
-  buzzerBeep(80, buzzerVolume());
-
-  initializeManualPump();
+  featureControlInit();
   loadTankSettings();
+  managementInit();
+  initializeManualPump();
+  buzzerBeep(80, buzzerVolume());
   initializeEncoder();
   initializeDisplay();
   initializeLoRa();
@@ -105,18 +122,30 @@ void loop() {
 
   timeServiceTick();
   schedulerTick();
+  telemetryTick();
   displayEngineTick();
 
   // Per-page tick hooks
   switch (uiPage()) {
-    case Page::AlarmTimer:      uiAlarmTimerTick();      break;
-    case Page::AlarmScheduler:  uiAlarmSchedulerTick();  break;
-    case Page::AlarmSleep:      uiAlarmSleepTick();      break;
-    case Page::DisplayTimeout:  uiDisplayTimeoutTick();  break;
-    case Page::DisplayDim:      uiDisplayDimTick();      break;
-   case Page::Telemetry:       uiTelemetryTick();       break;
-case Page::DisplayDateTime: uiDisplayDateTimeTick(); break;
-    case Page::DisplayNTP:      uiDisplayNTPTick();      break;
+    case Page::AlarmTimer:         uiAlarmTimerTick(); break;
+    case Page::AlarmScheduler:     uiAlarmSchedulerTick(); break;
+    case Page::AlarmSleep:         uiAlarmSleepTick(); break;
+    case Page::DisplayTimeout:     uiDisplayTimeoutTick(); break;
+    case Page::DisplayDim:         uiDisplayDimTick(); break;
+    case Page::DisplayDateTime:    uiDisplayDateTimeTick(); break;
+    case Page::DisplayNTP:         uiDisplayNTPTick(); break;
+    case Page::Telemetry:          uiTelemetryTick(); break;
+    case Page::ManagementMode:    uiManagementModeTick(); break;
+    case Page::ManagementBuzzer:  uiManagementBuzzerTick(); break;
+    case Page::NetworkStatus:     uiNetworkStatusTick(); break;
+    case Page::NetworkWiFi:       uiNetworkWiFiTick(); break;
+    case Page::CleanReboot:
+    case Page::CleanClearCache:
+    case Page::CleanFactoryReset: uiSystemCleanTick(); break;
+    case Page::SystemRetry:       uiSystemRetryTick(); break;
+    case Page::AdminTankHeight:   uiAdminTankHeightTick(); break;
+    case Page::AdminTankCapacity: uiAdminTankCapacityTick(); break;
+    case Page::AdminThresholds:   uiAdminThresholdsTick(); break;
     default: break;
   }
 

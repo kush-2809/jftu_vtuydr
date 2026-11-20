@@ -7,7 +7,12 @@ enum class Page : uint8_t {
   Alarm, AlarmTimer, AlarmScheduler, AlarmSleep,
   Display, DisplayTimeout, DisplayDim, DisplayDateTime, DisplayNTP,
   Layout, SystemInfo, Management, Network, SystemClean,
-  SystemRetry, AdminConfig
+  SystemRetry, AdminConfig,
+  ManagementMode, ManagementBuzzer,
+  NetworkStatus, NetworkWiFi,
+  CleanReboot, CleanClearCache, CleanFactoryReset,
+  AdminTankHeight, AdminTankCapacity, AdminThresholds,
+  AdminToggleLoRa, AdminToggleSSR, AdminToggleTouch, AdminLock
 };
 
 void uiInit();

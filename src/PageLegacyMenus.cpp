@@ -100,7 +100,7 @@ void drawManualPumpPage() {
   canvas.setTextSize(2); canvas.setCursor(8, 42); canvas.print("MANUAL PUMP");
   canvas.setTextSize(1); canvas.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
   canvas.setCursor(10, 70); canvas.print("TTP223 TOUCH SWITCH");
-  canvas.drawRoundRect(10, 92, W - 20, 65, 8, TFT_DARKGREY);
+ canvas.drawRect(10, 92, W - 20, 65, themeGet().muted);
   if (manualOverrideActive) {
     unsigned long elapsedSec = (millis() - manualOverrideStartedAt) / 1000UL;
     unsigned long totalSec   = (unsigned long)manualOverrideMinutes * 60UL;
@@ -215,10 +215,16 @@ void drawMenu() {
   for (int s = 0; s < VIS && first + s < n; s++) {
     int y = 67 + s * 25;
     int idx = first + s;
-    if (idx == menuIndex) {
-      canvas.fillRoundRect(8, y, W - 16, 22, 5, TFT_DARKCYAN);
-      canvas.setTextColor(TFT_WHITE, TFT_DARKCYAN);
-    } else canvas.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+  const Theme& t = themeGet();
+if (idx == menuIndex) {
+  canvas.fillRect(8, y, W - 16, 22, t.selBg);
+  canvas.fillRect(8, y, 3, 22, t.accent);
+  canvas.setTextColor(t.selFg, t.selBg);
+  canvas.setTextSize(1);
+  canvas.setCursor(18, y + 7);
+  canvas.print(legacy[idx]);
+  continue;  // skip the default draw below
+} else canvas.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
     canvas.setTextSize(1); canvas.setCursor(18, y + 7);
     canvas.print(legacy[idx]);
   }

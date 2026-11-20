@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include <time.h>
 
 void timeServiceInit();
 void timeServiceTick();

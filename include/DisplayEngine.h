@@ -13,3 +13,4 @@ void     displaySetTimeoutSeconds(uint16_t sec);
 uint16_t displayGetTimeoutSeconds();
 void     displaySetDimStep(uint8_t percent);
 uint8_t  displayGetDimStep();
+void displayAdjustBrightness(int8_t direction);

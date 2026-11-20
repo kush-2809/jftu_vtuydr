@@ -4,15 +4,16 @@
 void telemetryInit();
 void telemetryTick();
 
-uint8_t  telemetryCpuPercent();         // whole-system, 0..100
-uint8_t  telemetryCpuCore0Percent();    // core 0 (PRO_CPU on S3)
-uint8_t  telemetryCpuCore1Percent();    // core 1 (APP_CPU on S3)
+int8_t   telemetryCpuPercent();
 uint32_t telemetryHeapFreeKb();
 uint32_t telemetryHeapUsedKb();
+uint32_t telemetryPsramFreeKb();
+uint32_t telemetryPsramTotalKb();
 float    telemetryChipTempC();
 uint32_t telemetryUptimeSeconds();
+uint32_t telemetryCpuFrequencyMHz();
 
-// Placeholders
+// These return NAN until suitable external measurement hardware is installed.
 float telemetryAcVoltage();
 float telemetryAcCurrent();
 float telemetryEspVoltage();

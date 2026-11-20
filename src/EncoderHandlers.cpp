@@ -4,6 +4,8 @@
 #include "MenuModel.h"
 #include "PumpController.h"
 #include "TankSettings.h"
+#include "Buzzer.h"
+#include "DisplayEngine.h"
 
 static const float MIN_THRESHOLD_GAP = 1.0f;
 
@@ -35,12 +37,22 @@ void saveOverrideEdit() {
 void cancelOverrideEdit() { draftOverrideMinutes = manualOverrideMinutes; overrideEditing = false; }
 
 void handleShortPress() {
-  // Per-page tickers consume press first
+  // Menu pages act immediately and must not leave a pending press for the
+  // newly opened child page.
+  if (uiInMenu()) {
+    menuActivate(uiPage(), uiMenuIndex());
+    return;
+  }
+  if (uiPage() == Page::SystemInfo) {
+    uiAdminPress();
+    return;
+  }
+
+  if (uiPage() == Page::Dashboard) {
+    uiPush(Page::MainMenu);
+    return;
+  }
   uiInjectPress();
-  // SystemInfo admin gesture uses the press too
-  if (uiPage() == Page::SystemInfo) { uiAdminPress(); return; }
-  // Menu selection
-  if (uiInMenu()) { menuActivate(uiPage(), uiMenuIndex()); return; }
 
   if (currentPage == 4) {
     if (!calibrationEditing) startTankHeightEdit();
@@ -58,7 +70,9 @@ void handleShortPress() {
     drivePumpOutput(false);
     setAutoPendingOn(false);
     autoPumpState = AUTO_IDLE;
-    failedAttempts = 0; fillingConfirmed = false; bootResumePending = false;
+    failedAttempts = 0;
+    fillingConfirmed = false;
+    bootResumePending = false;
     saveTankSettings();
     return;
   }
@@ -67,26 +81,44 @@ void handleShortPress() {
     else saveOverrideEdit();
     return;
   }
-  uiPush(Page::MainMenu);
 }
 
 void handleLongPress() {
+  if (uiPage() == Page::Dashboard) {
+    uiPush(Page::MainMenu);
+    return;
+  }
   uiInjectLongPress();
-  if (uiPage() != Page::Dashboard) { uiPop(); return; }
-  uiPush(Page::MainMenu);
+  // Parent menus and System Info do not have page tick handlers.
+  if (uiInMenu() || uiPage() == Page::SystemInfo) {
+    uiConsumeLongPress();
+    uiPop();
+  }
 }
 
 void handleEncoderRotation(int direction) {
-  uiInjectRotation(direction);
-  if (uiPage() == Page::SystemInfo) adminGestureFeed(direction);
+      if (buzzerVolume() > 0) {
+    buzzerBeep(18, buzzerVolume());
+  }
   if (uiInMenu()) {
     const int n = menuItemCount(uiPage());
+    if (n <= 0) return;
     int i = uiMenuIndex() + direction;
     if (i < 0) i = n - 1;
     if (i >= n) i = 0;
     uiSetMenuIndex(i);
     return;
   }
+  if (uiPage() == Page::SystemInfo) {
+    adminGestureFeed(direction);
+    return;
+  }
+ if (uiPage() == Page::Dashboard) {
+  displayAdjustBrightness(direction);
+  return;
+}
+
+  uiInjectRotation(direction);
   if (thresholdEditing && currentPage == 6) {
     if (thresholdEditStep == 0) {
       draftAutoOnLevel += direction;
@@ -98,8 +130,11 @@ void handleEncoderRotation(int direction) {
     return;
   }
   if (overrideEditing && currentPage == 8) {
-    if (direction > 0) { if (draftOverrideMinutes < MAX_OVERRIDE_MINUTES) draftOverrideMinutes++; }
-    else               { if (draftOverrideMinutes > MIN_OVERRIDE_MINUTES) draftOverrideMinutes--; }
+    if (direction > 0) {
+      if (draftOverrideMinutes < MAX_OVERRIDE_MINUTES) draftOverrideMinutes++;
+    } else if (draftOverrideMinutes > MIN_OVERRIDE_MINUTES) {
+      draftOverrideMinutes--;
+    }
     return;
   }
   if (calibrationEditing && currentPage == 4) {

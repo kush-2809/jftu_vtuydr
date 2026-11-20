@@ -7,7 +7,10 @@
 #include "SmartTankState.h"
 #include "Buzzer.h"           // ← ADD THIS LINE
 #include "Telemetry.h"        // (from the last drop)
-#include "WiFiManager.h"      // (from the last drop)
+#include "WiFiManager.h"
+#include "Management.h"
+#include "FeatureControl.h"
+#include "PumpController.h"
 #include <math.h>  
 // Shared drawing helpers
 static void pageHeader(const char* title) {
@@ -33,12 +36,24 @@ static int clampI(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v
 // ALARM → TIMER
 // ============================================================
 static uint32_t timerDraftMin = 10;
+static bool timerStartError = false;
 
 void uiAlarmTimerTick() {
   int dir = uiConsumeRotation();
-  if (uiConsumeLongPress()) { uiPop(); return; }
-  if (dir != 0) timerDraftMin = (uint32_t)clampI((int)timerDraftMin + dir, 1, 600);
-  if (uiConsumePress()) { timerStart(timerDraftMin); uiPop(); }
+  if (uiConsumeLongPress()) { timerStartError = false; uiPop(); return; }
+  if (dir != 0) {
+    timerDraftMin = (uint32_t)clampI((int)timerDraftMin + dir, 1, 60);
+    timerStartError = false;
+  }
+  if (uiConsumePress()) {
+    timerStart(timerDraftMin);
+    if (timerActive()) {
+      timerStartError = false;
+      uiPop();
+    } else {
+      timerStartError = true;
+    }
+  }
 }
 void uiAlarmTimerDraw() {
   const Theme& t = themeGet();
@@ -58,63 +73,88 @@ void uiAlarmTimerDraw() {
                   (unsigned)(remain / 60),
                   (unsigned)(remain % 60));
   } else {
-    canvas.setTextSize(1); canvas.setTextColor(t.muted, t.bg);
-    canvas.setCursor(10, 140); canvas.print("Not running");
+    canvas.setTextSize(1);
+    canvas.setTextColor(timerStartError ? t.err : t.muted, t.bg);
+    canvas.setCursor(10, 140);
+    canvas.print(timerStartError ? "Start blocked: check mode / sensor" : "Not running");
   }
 
+  canvas.setTextSize(1);
+  canvas.setTextColor(t.muted, t.bg);
+  canvas.setCursor(10, 174);
+  canvas.print("Maximum timer: 60 minutes");
   pageFooter("ROTATE: ADJUST  PRESS: START  HOLD: BACK");
   canvas.pushSprite(0, 0);
 }
 
 // ============================================================
-// ALARM → SCHEDULER
+// ALARM → DAILY SCHEDULER (starts once per selected day and fills to OFF level)
 // ============================================================
 static int schStep = 0;
+static bool schedulerAllDays() {
+  TimeWindow& w = schedulerWindow();
+  for (int i = 0; i < 7; ++i) if (!w.days[i]) return false;
+  return true;
+}
+static void setSchedulerAllDays(bool enabled) {
+  TimeWindow& w = schedulerWindow();
+  for (int i = 0; i < 7; ++i) w.days[i] = enabled;
+}
 
 void uiAlarmSchedulerTick() {
   TimeWindow& w = schedulerWindow();
   int dir = uiConsumeRotation();
-  if (uiConsumeLongPress()) { uiPop(); return; }
+  if (uiConsumeLongPress()) { schStep = 0; uiPop(); return; }
   if (uiConsumePress()) {
-    schStep = (schStep + 1) % 6;
-    if (schStep == 5) { prefsSaveScheduler(); uiPop(); }
+    if (schStep >= 4) {
+      prefsSaveScheduler();
+      schStep = 0;
+      uiPop();
+    } else {
+      ++schStep;
+    }
     return;
   }
   if (dir == 0) return;
   switch (schStep) {
-    case 0: w.onHour    = (uint8_t)clampI(w.onHour    + dir, 0, 23); break;
-    case 1: w.onMinute  = (uint8_t)clampI(w.onMinute  + dir, 0, 59); break;
-    case 2: w.offHour   = (uint8_t)clampI(w.offHour   + dir, 0, 23); break;
-    case 3: w.offMinute = (uint8_t)clampI(w.offMinute + dir, 0, 59); break;
-    case 4: w.enabled = !w.enabled; break;
+    case 0: w.onHour = (uint8_t)clampI(w.onHour + dir, 0, 23); break;
+    case 1: w.onMinute = (uint8_t)clampI(w.onMinute + dir, 0, 59); break;
+    case 2: setSchedulerAllDays(!schedulerAllDays()); break;
+    case 3: w.enabled = !w.enabled; break;
   }
 }
 
 void uiAlarmSchedulerDraw() {
   const Theme& t = themeGet();
   TimeWindow& w = schedulerWindow();
-  pageHeader("SCHEDULER");
-  canvas.setTextSize(1);
-  const char* labels[] = {"ON hour","ON minute","OFF hour","OFF minute","Enabled","SAVE"};
-  for (int i = 0; i < 6; i++) {
-    int y = 42 + i * 28;
-    if (i == schStep) canvas.fillRoundRect(8, y - 2, W - 16, 24, 5, t.selBg);
-    canvas.setTextColor(i == schStep ? t.selFg : t.muted,
-                        i == schStep ? t.selBg : t.bg);
-    canvas.setCursor(12, y); canvas.print(labels[i]);
-    char buf[8]; const char* val = "";
+  pageHeader("DAILY SCHEDULER");
+  const char* labels[] = {"Start hour", "Start minute", "Every day", "Enabled", "SAVE"};
+  for (int i = 0; i < 5; ++i) {
+    int y = 55 + i * 39;
+    bool selected = i == schStep;
+    if (selected) canvas.fillRoundRect(8, y - 3, W - 16, 31, 5, t.selBg);
+    canvas.setTextSize(1);
+    canvas.setTextColor(selected ? t.selFg : t.muted, selected ? t.selBg : t.bg);
+    canvas.setCursor(14, y + 5);
+    canvas.print(labels[i]);
+    char val[12] = "";
     switch (i) {
-      case 0: snprintf(buf, sizeof(buf), "%02u", w.onHour);    val = buf; break;
-      case 1: snprintf(buf, sizeof(buf), "%02u", w.onMinute);  val = buf; break;
-      case 2: snprintf(buf, sizeof(buf), "%02u", w.offHour);   val = buf; break;
-      case 3: snprintf(buf, sizeof(buf), "%02u", w.offMinute); val = buf; break;
-      case 4: val = w.enabled ? "ON" : "OFF"; break;
+      case 0: snprintf(val, sizeof(val), "%02u", w.onHour); break;
+      case 1: snprintf(val, sizeof(val), "%02u", w.onMinute); break;
+      case 2: snprintf(val, sizeof(val), "%s", schedulerAllDays() ? "YES" : "NO"); break;
+      case 3: snprintf(val, sizeof(val), "%s", w.enabled ? "ON" : "OFF"); break;
+      case 4: snprintf(val, sizeof(val), "PRESS"); break;
     }
-    canvas.setTextColor(i == schStep ? t.selFg : t.accent,
-                        i == schStep ? t.selBg : t.bg);
-    canvas.setCursor(160, y); canvas.print(val);
+    canvas.setTextSize(2);
+    canvas.setTextColor(selected ? t.selFg : t.accent, selected ? t.selBg : t.bg);
+    canvas.setCursor(154, y + 3);
+    canvas.print(val);
   }
-  pageFooter("ROTATE: EDIT  PRESS: NEXT  HOLD: BACK");
+  canvas.setTextSize(1);
+  canvas.setTextColor(t.muted, t.bg);
+  canvas.setCursor(10, 257);
+  canvas.print("Starts filling at this time; stops at full threshold.");
+  pageFooter("ROTATE: EDIT  PRESS: NEXT / SAVE  HOLD: BACK");
   canvas.pushSprite(0, 0);
 }
 
@@ -126,7 +166,7 @@ static int sleepStep = 0;
 void uiAlarmSleepTick() {
   SleepWindow& s = sleepWindow();
   int dir = uiConsumeRotation();
-  if (uiConsumeLongPress()) { uiPop(); return; }
+  if (uiConsumeLongPress()) { sleepStep = 0; uiPop(); return; }
   if (uiConsumePress()) {
     sleepStep = (sleepStep + 1) % 6;
     if (sleepStep == 5) { prefsSaveSleep(); uiPop(); }
@@ -173,13 +213,14 @@ void uiAlarmSleepDraw() {
 // ============================================================
 // DISPLAY → TIMEOUT
 // ============================================================
-static uint16_t toDraft = 0;
+static uint16_t toDraft = 15;
+static bool toDraftLoaded = false;
 
 void uiDisplayTimeoutTick() {
-  if (toDraft == 0) toDraft = displayGetTimeoutSeconds();
+  if (!toDraftLoaded) { toDraft = displayGetTimeoutSeconds(); toDraftLoaded = true; }
   int dir = uiConsumeRotation();
-  if (uiConsumeLongPress()) { uiPop(); return; }
-  if (uiConsumePress()) { displaySetTimeoutSeconds(toDraft); uiPop(); return; }
+  if (uiConsumeLongPress()) { toDraftLoaded = false; uiPop(); return; }
+  if (uiConsumePress()) { displaySetTimeoutSeconds(toDraft); toDraftLoaded = false; uiPop(); return; }
   if (dir != 0) toDraft = (uint16_t)clampI((int)toDraft + dir * 5, 0, 600);
 }
 
@@ -201,13 +242,14 @@ void uiDisplayTimeoutDraw() {
 // ============================================================
 // DISPLAY → DIM STEP
 // ============================================================
-static uint8_t dimDraft = 0;
+static uint8_t dimDraft = 10;
+static bool dimDraftLoaded = false;
 
 void uiDisplayDimTick() {
-  if (dimDraft == 0) dimDraft = displayGetDimStep();
+  if (!dimDraftLoaded) { dimDraft = displayGetDimStep(); dimDraftLoaded = true; }
   int dir = uiConsumeRotation();
-  if (uiConsumeLongPress()) { uiPop(); return; }
-  if (uiConsumePress()) { displaySetDimStep(dimDraft); uiPop(); return; }
+  if (uiConsumeLongPress()) { dimDraftLoaded = false; uiPop(); return; }
+  if (uiConsumePress()) { displaySetDimStep(dimDraft); dimDraftLoaded = false; uiPop(); return; }
   if (dir != 0) dimDraft = (uint8_t)clampI((int)dimDraft + dir, 10, 20);
 }
 
@@ -219,7 +261,7 @@ void uiDisplayDimDraw() {
   canvas.setTextSize(4); canvas.setTextColor(t.accent, t.bg);
   canvas.setCursor(10, 75); canvas.printf("%u%%", dimDraft);
   canvas.setTextSize(1); canvas.setTextColor(t.muted, t.bg);
-  canvas.setCursor(10, 140); canvas.print("Floor: 40% (hard-coded)");
+  canvas.setCursor(10, 140); canvas.print("Minimum brightness: 40%");
   pageFooter("ROTATE: ADJUST  PRESS: SAVE  HOLD: BACK");
   canvas.pushSprite(0, 0);
 }
@@ -236,33 +278,6 @@ static const int DT_MENU_COUNT = 3;
 
 static int  dtStep = 0;
 static int  dtv[6] = {2026, 1, 1, 0, 0, 0};
-
-void uiDisplayDateTimeMenuTick() {
-  int dir = uiConsumeRotation();
-  if (uiConsumeLongPress()) { uiPop(); return; }
-  if (dir != 0) {
-    dtMenuSel = (dtMenuSel + (dir > 0 ? 1 : DT_MENU_COUNT - 1)) % DT_MENU_COUNT;
-  }
-  if (uiConsumePress()) {
-    switch (dtMenuSel) {
-      case 0: {
-        // Load current values as starting point
-        time_t t = nowLocal(); struct tm tmv;
-        if (timeIsValid()) {
-          localtime_r(&t, &tmv);
-          dtv[0] = tmv.tm_year + 1900; dtv[1] = tmv.tm_mon + 1; dtv[2] = tmv.tm_mday;
-          dtv[3] = tmv.tm_hour;        dtv[4] = tmv.tm_min;    dtv[5] = tmv.tm_sec;
-        }
-        dtStep = 0;
-        uiPush(Page::DisplayDateTime);   // reuse the same page slot for editor
-        // BUT we need to switch mode — handled by the "editor active" flag below
-        break;
-      }
-      case 1: timeRequestNtpSync(); break;
-      case 2: uiPush(Page::DisplayNTP); break;
-    }
-  }
-}
 
 // The editor sub-page — reached via dtMenuSel 0
 static bool dtEditorActive = false;
@@ -297,21 +312,25 @@ void uiDisplayDateTimeDraw() {
   const Theme& t = themeGet();
   pageHeader("SET DATE & TIME");
   canvas.setTextSize(1);
-  const char* labels[] = {"Year","Month","Day","Hour","Minute","Second"};
-  for (int i = 0; i < 6; i++) {
-    int y = 40 + i * 22;
-    if (i == dtStep) canvas.fillRoundRect(8, y - 2, W - 16, 20, 4, t.selBg);
+  const char* labels[] = {"Year","Month","Day","Hour","Minute","Second","SAVE"};
+  for (int i = 0; i < 7; i++) {
+    int y = 40 + i * 20;
+    if (i == dtStep) canvas.fillRoundRect(8, y - 2, W - 16, 19, 4, t.selBg);
     canvas.setTextColor(i == dtStep ? t.selFg : t.muted,
                         i == dtStep ? t.selBg : t.bg);
     canvas.setCursor(12, y); canvas.print(labels[i]);
     canvas.setTextColor(i == dtStep ? t.selFg : t.accent,
                         i == dtStep ? t.selBg : t.bg);
-    char buf[8];
-    snprintf(buf, sizeof(buf), "%04d", dtv[i]);
-    canvas.setCursor(140, y); canvas.print(buf);
+    if (i < 6) {
+      char buf[8];
+      snprintf(buf, sizeof(buf), i == 0 ? "%04d" : "%02d", dtv[i]);
+      canvas.setCursor(150, y); canvas.print(buf);
+    } else {
+      canvas.setCursor(150, y); canvas.print("PRESS");
+    }
   }
   canvas.setTextSize(1); canvas.setTextColor(t.muted, t.bg);
-  canvas.setCursor(10, H - 40);
+  canvas.setCursor(10, 194);
   canvas.printf("Now: %s", timeFormatFull().c_str());
   pageFooter("ROTATE: EDIT  PRESS: NEXT/SAVE  HOLD: CANCEL");
   canvas.pushSprite(0, 0);
@@ -347,40 +366,62 @@ void uiDisplayDateTimeTick() {
   int dir = uiConsumeRotation();
   if (uiConsumeLongPress()) {
     dtEditorActive = false;
-    uiPop();
     return;
   }
   if (uiConsumePress()) {
-    dtStep = (dtStep + 1) % 6;
-    if (dtStep == 5) {
-      // Apply
-      timeSetManual(dtv[0], dtv[1], dtv[2], dtv[3], dtv[4], dtv[5]);
-      buzzerBeep(60, buzzerVolume());
-      dtEditorActive = false;
-      uiPop();
+    if (dtStep < 6) {
+      ++dtStep;
+    } else {
+      // Reject impossible calendar dates rather than normalising them silently.
+      const bool leap = (dtv[0] % 4 == 0 && dtv[0] % 100 != 0) || (dtv[0] % 400 == 0);
+      const int monthDays[] = {31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+      if (dtv[2] >= 1 && dtv[2] <= monthDays[dtv[1] - 1]) {
+        timeSetManual(dtv[0], dtv[1], dtv[2], dtv[3], dtv[4], dtv[5]);
+        buzzerBeep(60, buzzerVolume());
+        dtEditorActive = false;
+      }
       return;
     }
   }
-  if (dir == 0) return;
+  if (dir == 0 || dtStep >= 6) return;
   const int lim[6][2] = {{2020,2099},{1,12},{1,31},{0,23},{0,59},{0,59}};
   dtv[dtStep] = clampI(dtv[dtStep] + dir, lim[dtStep][0], lim[dtStep][1]);
+  if (dtStep == 2) {
+    const bool leap = (dtv[0] % 4 == 0 && dtv[0] % 100 != 0) || (dtv[0] % 400 == 0);
+    const int monthDays[] = {31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    dtv[2] = clampI(dtv[2], 1, monthDays[dtv[1] - 1]);
+  }
+  if (dtStep == 1 && dtv[2] > 0) {
+    const bool leap = (dtv[0] % 4 == 0 && dtv[0] % 100 != 0) || (dtv[0] % 400 == 0);
+    const int monthDays[] = {31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    dtv[2] = clampI(dtv[2], 1, monthDays[dtv[1] - 1]);
+  }
 }
 // ============================================================
 // DISPLAY → NTP SERVER
 // ============================================================
 static int ntpPreset = 0;
+static bool ntpPresetLoaded = false;
 static const char* ntpPresets[] = {
   "pool.ntp.org", "time.nist.gov", "time.google.com", "time.cloudflare.com"
 };
 
 void uiDisplayNTPTick() {
+  if (!ntpPresetLoaded) {
+    const String active = timeGetNtpServer();
+    for (int i = 0; i < 4; ++i) {
+      if (active == ntpPresets[i]) { ntpPreset = i; break; }
+    }
+    ntpPresetLoaded = true;
+  }
   int dir = uiConsumeRotation();
-  if (uiConsumeLongPress()) { uiPop(); return; }
+  if (uiConsumeLongPress()) { ntpPresetLoaded = false; uiPop(); return; }
   if (dir != 0) {
     ntpPreset = (ntpPreset + (dir > 0 ? 1 : 3)) % 4;
   }
   if (uiConsumePress()) {
     timeSetNtpServer(String(ntpPresets[ntpPreset]));
+    ntpPresetLoaded = false;
     uiPop();
   }
 }
@@ -409,48 +450,51 @@ void uiDisplayNTPDraw() {
 void uiTelemetryDraw() {
   const Theme& t = themeGet();
   pageHeader("TELEMETRY");
-
   canvas.setTextSize(1);
 
-  auto row = [&](int y, const char* label, const String& value,
-                 uint16_t valueColor) {
+  auto row = [&](int y, const char* label, const String& value, uint16_t color) {
     canvas.setTextColor(t.muted, t.bg);
     canvas.setCursor(10, y);
     canvas.print(label);
-    canvas.setTextColor(valueColor, t.bg);
-    canvas.setCursor(130, y);
+    canvas.setTextColor(color, t.bg);
+    canvas.setCursor(132, y);
     canvas.print(value);
   };
 
-  uint8_t  cpu   = telemetryCpuPercent();
-  uint8_t  cpu0  = telemetryCpuCore0Percent();
-  uint8_t  cpu1  = telemetryCpuCore1Percent();
-  uint32_t hFree = telemetryHeapFreeKb();
-  uint32_t hUsed = telemetryHeapUsedKb();
-  float    temp  = telemetryChipTempC();
-  uint32_t upSec = telemetryUptimeSeconds();
+  const int8_t cpu = telemetryCpuPercent();
+  const float temp = telemetryChipTempC();
+  const uint32_t heapFree = telemetryHeapFreeKb();
+  const uint32_t heapUsed = telemetryHeapUsedKb();
+  const uint32_t psramFree = telemetryPsramFreeKb();
+  const uint32_t psramTotal = telemetryPsramTotalKb();
+  const uint32_t uptime = telemetryUptimeSeconds();
+  const uint16_t cpuColor = cpu < 0 ? t.warn : cpu < 40 ? t.ok : cpu < 75 ? t.warn : t.err;
+  const uint16_t tempColor = temp < 50 ? t.ok : temp < 70 ? t.warn : t.err;
 
-  uint16_t cpuColor  = cpu  < 40 ? t.ok : cpu  < 75 ? t.warn : t.err;
-  uint16_t tempColor = temp < 50 ? t.ok : temp < 70 ? t.warn : t.err;
+  row(43, "CPU load", cpu >= 0 ? String(cpu) + " %" : "Not configured", cpuColor);
+  row(61, "CPU frequency", String(telemetryCpuFrequencyMHz()) + " MHz", t.fg);
+  row(79, "SoC temperature", isfinite(temp) ? String(temp, 1) + " C" : "N/A", tempColor);
+  row(97, "Heap free", String(heapFree) + " KB", t.fg);
+  row(115, "Heap used", String(heapUsed) + " KB", t.fg);
+  row(133, "PSRAM free", psramTotal ? String(psramFree) + " KB" : "Not detected", t.fg);
+  row(151, "PSRAM total", psramTotal ? String(psramTotal) + " KB" : "Not detected", t.fg);
+  row(169, "Uptime", String(uptime / 3600) + "h " + String((uptime / 60) % 60) + "m", t.fg);
 
-  row(44,  "CPU",       String(cpu)  + " %",                     cpuColor);
-  row(62,  "  Core 0",  String(cpu0) + " %",                     t.fg);
-  row(80,  "  Core 1",  String(cpu1) + " %",                     t.fg);
-  row(98,  "RAM free",  String(hFree) + " KB",                   t.fg);
-  row(116, "RAM used",  String(hUsed) + " KB",                   t.fg);
-  row(134, "Chip temp", String(temp, 1) + " C",                  tempColor);
-  row(152, "Uptime",    String(upSec / 3600) + "h " +
-                        String((upSec / 60) % 60) + "m " +
-                        String(upSec % 60) + "s",                t.fg);
+  canvas.drawFastHLine(8, 190, W - 16, t.muted);
+  canvas.setTextColor(t.accent, t.bg);
+  canvas.setCursor(10, 201);
+  canvas.print("ELECTRICAL MEASUREMENTS");
+  const bool acVoltageReady = isfinite(telemetryAcVoltage());
+  const bool acCurrentReady = isfinite(telemetryAcCurrent());
+  const bool espVoltageReady = isfinite(telemetryEspVoltage());
+  const bool espCurrentReady = isfinite(telemetryEspCurrent());
+  row(220, "AC voltage", acVoltageReady ? String(telemetryAcVoltage(), 1) + " V" : "Sensor not fitted", t.warn);
+  row(237, "AC current", acCurrentReady ? String(telemetryAcCurrent(), 2) + " A" : "Sensor not fitted", t.warn);
+  row(254, "ESP V / A", (espVoltageReady && espCurrentReady)
+       ? String(telemetryEspVoltage(), 2) + " V / " + String(telemetryEspCurrent(), 2) + " A"
+       : "Sensor not fitted", t.warn);
 
-  canvas.drawFastHLine(8, 176, W - 16, t.muted);
-
-  row(184, "LoRa RSSI", remoteConnected ? String(lastRSSI) + " dBm" : "--",   t.accent);
-  row(202, "LoRa SNR",  remoteConnected ? String(lastSNR, 1) + " dB" : "--", t.accent);
-  row(220, "Wi-Fi RSSI", wifiManagerIsConnected()
-                          ? String(wifiManagerGetRSSI()) + " dBm" : "--",     t.accent);
-
-  pageFooter("Live - updates 1x/sec - HOLD: BACK");
+  pageFooter("CPU LOAD NEEDS RTOS STATS  HOLD: BACK");
   canvas.pushSprite(0, 0);
 }
 

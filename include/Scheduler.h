@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 struct TimeWindow {
-  uint8_t onHour, onMinute, offHour, offMinute;
+  uint8_t onHour, onMinute;
   bool    enabled;
   bool    days[7];
 };

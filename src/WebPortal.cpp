@@ -10,6 +10,7 @@
 #include "SmartTankState.h"
 #include "PumpController.h"
 #include "TankSettings.h"
+#include "Management.h"
 
 namespace {
 WebServer server(80);
@@ -77,7 +78,7 @@ void handleStatus() {
   json += ",\"pumpOn\":" + String(manualPumpState ? "true" : "false");
   json += ",\"override\":" + String(manualOverrideActive ? "true" : "false");
   json += ",\"overrideMinutes\":" + String(manualOverrideMinutes);
-  json += ",\"autoEnabled\":" + String(autoModeEnabled ? "true" : "false");
+  json += ",\"autoEnabled\":" + String(managementAllowsAuto() ? "true" : "false");
   json += ",\"autoOn\":" + String(pumpAutoOnLevel, 1);
   json += ",\"autoOff\":" + String(pumpAutoOffLevel, 1);
   json += ",\"sensorConnected\":" + String(remoteConnected ? "true" : "false");
@@ -106,7 +107,7 @@ void handlePumpStart() {
   }
   startManualOverride();
   if (manualOverrideActive) sendMessage(200, "Manual override started.");
-  else sendMessage(409, "Manual override was not started. Check automatic mode and pump state.");
+  else sendMessage(409, "Manual override was not started. Check Management mode, sensor link and pump state.");
 }
 
 void handlePumpStop() {
@@ -121,6 +122,10 @@ void handlePumpStop() {
 void handleAutoMode() {
   if (!server.hasArg("enabled")) { sendMessage(400, "Missing enabled parameter."); return; }
   bool enabled = server.arg("enabled") == "1";
+  if (enabled && !managementModeSupportsAuto()) {
+    sendMessage(409, "Automatic operation is not included in the selected Management mode.");
+    return;
+  }
   if (enabled != autoModeEnabled) {
     autoModeEnabled = enabled;
     stopManualOverride("automatic mode changed from web dashboard");

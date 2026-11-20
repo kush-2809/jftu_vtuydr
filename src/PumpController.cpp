@@ -1,9 +1,14 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <math.h>
+#include <time.h>
 
 #include "SmartTankState.h"
 #include "PumpController.h"
+#include "Management.h"
+#include "FeatureControl.h"
+#include "TimeService.h"
+#include "Buzzer.h"
 
 #define TOUCH_PIN 1
 #define SSR_PIN 2
@@ -22,13 +27,64 @@ static const unsigned long RETRY_INTERVALS_MS[] = {
 };
 static const uint8_t RETRY_INTERVAL_COUNT =
     sizeof(RETRY_INTERVALS_MS) / sizeof(RETRY_INTERVALS_MS[0]);
+static const unsigned long RETRY_WARNING_BEEP_MS = 10UL * 60UL * 1000UL;
+
+static bool alarmFillActive = false;
+static float manualStartLevel = 0.0f;
+static bool manualRiseConfirmed = false;
+static Preferences retryPrefs;
+static bool manualRetryEnabled = false;
+static bool manualRetryAttemptActive = false;
+static uint8_t manualRetryHour = 18;
+static uint8_t manualRetryMinute = 0;
+static time_t manualRetryTarget = 0;
+static time_t retryTargetEpoch = 0;
+static bool retryWarningWasActive = false;
+static unsigned long lastRetryWarningBeep = 0;
+
+static time_t calculateNextRetryTarget() {
+  if (!timeIsValid()) return 0;
+  time_t now = nowLocal();
+  struct tm local;
+  localtime_r(&now, &local);
+  local.tm_hour = manualRetryHour;
+  local.tm_min = manualRetryMinute;
+  local.tm_sec = 0;
+  time_t target = mktime(&local);
+  if (target <= now) {
+    local.tm_mday += 1;
+    target = mktime(&local);
+  }
+  return target;
+}
+
+static bool sensorIsAvailable() {
+  return remoteConnected && sensorReadingValid && waterLevelValid;
+}
+
+static void persistRetryRuntime() {
+  retryPrefs.begin("retry-config", false);
+  retryPrefs.putUChar("fails", failedAttempts);
+  retryPrefs.putBool("alarmFill", alarmFillActive);
+  retryPrefs.putULong64("retryEp", (uint64_t)retryTargetEpoch);
+  retryPrefs.end();
+}
+
+static void clearRetryRuntime() {
+  failedAttempts = 0;
+  alarmFillActive = false;
+  retryTargetEpoch = 0;
+  retryAt = 0;
+  persistRetryRuntime();
+}
 
 // ==========================================
 // PUMP OUTPUT CONTROL
 // ==========================================
-
-// Low-level drive. Does NOT touch persisted state.
 void drivePumpOutput(bool on) {
+  // The SSR feature interlock always wins. A disabled SSR can never be
+  // energised by a manual, scheduled, or automatic request.
+  if (on && !featureSsrEnabled()) on = false;
   manualPumpState = on;
   const int onLevel = SSR_ACTIVE_HIGH ? HIGH : LOW;
   const int offLevel = SSR_ACTIVE_HIGH ? LOW : HIGH;
@@ -36,8 +92,6 @@ void drivePumpOutput(bool on) {
   Serial.printf("PUMP GPIO OUTPUT: %s\n", on ? "ON" : "OFF");
 }
 
-// Persisted intent for auto mode. Call when the auto controller
-// intentionally changes pump state.
 void setAutoPendingOn(bool on) {
   if (autoPendingOn == on) return;
   autoPendingOn = on;
@@ -45,13 +99,11 @@ void setAutoPendingOn(bool on) {
   Serial.printf("AUTO-PEND persisted: %s\n", on ? "ON" : "OFF");
 }
 
-// Persisted intent for manual override. Call when override starts/stops.
 void setOverridePendingOn(bool on) {
   tankPrefs.putBool("ovr-pend", on);
 }
 
 void initializeManualPump() {
-  digitalWrite(SSR_PIN, LOW);
   pinMode(SSR_PIN, OUTPUT);
   drivePumpOutput(false);
 
@@ -59,187 +111,263 @@ void initializeManualPump() {
   lastTouchReading = digitalRead(TOUCH_PIN);
   stableTouchState = lastTouchReading;
   lastTouchChange = millis();
-  Serial.println("TTP223 ready: touch to start/cancel manual override");
+  Serial.println("TTP223 ready");
+
+  retryPrefs.begin("retry-config", true);
+  manualRetryEnabled = retryPrefs.getBool("timeEn", false);
+  manualRetryHour = retryPrefs.getUChar("timeH", 18);
+  manualRetryMinute = retryPrefs.getUChar("timeM", 0);
+  failedAttempts = retryPrefs.getUChar("fails", 0);
+  alarmFillActive = retryPrefs.getBool("alarmFill", false);
+  retryTargetEpoch = (time_t)retryPrefs.getULong64("retryEp", 0);
+  retryPrefs.end();
+  if (manualRetryHour > 23) manualRetryHour = 18;
+  if (manualRetryMinute > 59) manualRetryMinute = 0;
+  if (failedAttempts > 0) {
+    // millis() resets on reboot. If the stored absolute deadline cannot yet
+    // be checked (no valid RTC/NTP clock), restart one full interval safely.
+    retryAt = millis() + getRetryInterval();
+    autoPumpState = AUTO_RETRY_WAIT;
+  }
+  manualRetryTarget = 0;
 }
 
 // ==========================================
 // MANUAL OVERRIDE
 // ==========================================
-
 void startManualOverride() {
-  if (manualOverrideActive) return;
-
-  // Absolute rule: if the auto controller is actively filling,
-  // do not let a touch interfere. Pump is already on for a reason.
-  if (autoPumpState == AUTO_FILLING) {
-    Serial.println(
-      "Manual touch ignored: auto filling is active"
-    );
-    return;
-  }
-
-  // Refuse to start override if pump output is already ON for any
-  // other reason (defensive; auto filling is the only one).
-  if (manualPumpState) {
-    Serial.println(
-      "Manual touch ignored: pump output already ON"
-    );
-    return;
-  }
+  if (!managementAllowsManual()) return;
+  // featureTouchEnabled gates only the TTP223 input path. Manual control
+  // requested from the web portal remains available when touch is disabled.
+  if (manualOverrideActive || !sensorIsAvailable()) return;
+  if (waterLevelPercent >= pumpAutoOffLevel) return;
+  if (autoPumpState == AUTO_FILLING || autoPumpState == AUTO_RETRY_WAIT || manualPumpState) return;
+  if (!featureSsrEnabled()) return;
 
   manualOverrideActive = true;
   manualOverrideStartedAt = millis();
+  manualStartLevel = waterLevelPercent;
+  manualRiseConfirmed = false;
   drivePumpOutput(true);
   setOverridePendingOn(true);
-
-  Serial.printf(
-    "MANUAL OVERRIDE STARTED for %lu minutes\n",
-    (unsigned long)manualOverrideMinutes
-  );
+  Serial.printf("MANUAL OVERRIDE STARTED for %lu minutes\n",
+                (unsigned long)manualOverrideMinutes);
 }
 
 void stopManualOverride(const char* reason) {
   if (!manualOverrideActive) return;
-
   manualOverrideActive = false;
   drivePumpOutput(false);
   setOverridePendingOn(false);
-
-  Serial.printf("MANUAL OVERRIDE STOPPED: %s\n", reason);
+  Serial.printf("MANUAL OVERRIDE STOPPED: %s\n", reason ? reason : "unspecified");
 }
 
 void handleManualPumpTouch() {
+  if (!featureTouchEnabled() || !managementAllowsManual()) return;
   const int reading = digitalRead(TOUCH_PIN);
   const unsigned long now = millis();
-
   if (reading != lastTouchReading) {
     lastTouchChange = now;
     lastTouchReading = reading;
   }
-
   if (now - lastTouchChange >= TOUCH_DEBOUNCE_MS &&
       reading != stableTouchState) {
     stableTouchState = reading;
-
     if (stableTouchState == HIGH) {
-      if (manualOverrideActive) {
-        // Only override can cancel override. Auto filling is
-        // never cancelled by touch because start is blocked
-        // while filling, so manualOverrideActive is false then.
-        stopManualOverride("user touch cancel");
-      } else {
-        startManualOverride();
-      }
+      if (manualOverrideActive) stopManualOverride("user touch cancel");
+      else startManualOverride();
     }
   }
 }
 
-
 // ==========================================
-// AUTOMATIC PUMP CONTROL FUNCTIONS
+// RETRY POLICY
 // ==========================================
-
 unsigned long getRetryInterval() {
+  if (failedAttempts == 0) return RETRY_INTERVALS_MS[0];
   uint8_t index = failedAttempts - 1;
   if (index >= RETRY_INTERVAL_COUNT) index = RETRY_INTERVAL_COUNT - 1;
   return RETRY_INTERVALS_MS[index];
 }
 
+bool alarmFillSessionActive() { return alarmFillActive; }
+uint8_t pumpFailedAttemptCount() { return failedAttempts; }
+bool pumpRetryManualTimeEnabled() { return manualRetryEnabled; }
+uint8_t pumpRetryManualHour() { return manualRetryHour; }
+uint8_t pumpRetryManualMinute() { return manualRetryMinute; }
+
+bool pumpRetryWarningActive() {
+  // The initial fill plus three unsuccessful retries equals four failed
+  // attempts. The warning then remains latched through automatic retries.
+  return failedAttempts >= 4 && !manualRetryEnabled &&
+         !manualRetryAttemptActive;
+}
+
+uint32_t pumpRetryRemainingSeconds() {
+  if (manualRetryEnabled) {
+    if (!timeIsValid()) return 0;
+    if (manualRetryTarget == 0) manualRetryTarget = calculateNextRetryTarget();
+    time_t now = nowLocal();
+    return manualRetryTarget > now ? (uint32_t)(manualRetryTarget - now) : 0;
+  }
+  if (autoPumpState != AUTO_RETRY_WAIT) return 0;
+  if (retryTargetEpoch > 0 && timeIsValid()) {
+    const time_t now = nowLocal();
+    return retryTargetEpoch > now ? (uint32_t)(retryTargetEpoch - now) : 0;
+  }
+  const long remaining = (long)(retryAt - millis());
+  return remaining > 0 ? (uint32_t)remaining / 1000UL : 0;
+}
+
+void pumpRetrySetManualTime(uint8_t hour, uint8_t minute) {
+  if (hour > 23 || minute > 59) return;
+  manualRetryHour = hour;
+  manualRetryMinute = minute;
+  manualRetryEnabled = true;
+  manualRetryAttemptActive = false;
+  manualRetryTarget = 0;
+  retryTargetEpoch = 0;
+  retryPrefs.begin("retry-config", false);
+  retryPrefs.putBool("timeEn", true);
+  retryPrefs.putUChar("timeH", hour);
+  retryPrefs.putUChar("timeM", minute);
+  retryPrefs.end();
+  persistRetryRuntime();
+  Serial.printf("Manual retry scheduled for %02u:%02u\n", hour, minute);
+}
+
+void pumpRetryClearManualTime() {
+  manualRetryEnabled = false;
+  manualRetryAttemptActive = false;
+  manualRetryTarget = 0;
+  if (autoPumpState == AUTO_RETRY_WAIT && failedAttempts > 0) {
+    const unsigned long interval = getRetryInterval();
+    retryAt = millis() + interval;
+    retryTargetEpoch = timeIsValid()
+        ? nowLocal() + (time_t)(interval / 1000UL) : 0;
+  } else {
+    retryAt = 0;
+    retryTargetEpoch = 0;
+  }
+  retryPrefs.begin("retry-config", false);
+  retryPrefs.putBool("timeEn", false);
+  retryPrefs.end();
+  persistRetryRuntime();
+}
+
+// ==========================================
+// FILL SESSION CONTROL
+// ==========================================
 void startAutomaticFilling(const char* reason) {
+  if (!sensorIsAvailable() || !featureSsrEnabled() ||
+      waterLevelPercent >= pumpAutoOffLevel) return;
   pumpStartLevel = waterLevelPercent;
   pumpStartedAt = millis();
   fillingConfirmed = false;
   autoPumpState = AUTO_FILLING;
   drivePumpOutput(true);
   setAutoPendingOn(true);
-  Serial.printf("AUTO FILL STARTED (%s) at %.1f%%\n",
-                reason, waterLevelPercent);
+  Serial.printf("FILL STARTED (%s) at %.1f%%\n",
+                reason ? reason : "unspecified", waterLevelPercent);
+}
+
+bool startAlarmFill(const char* reason) {
+  if (!managementAllowsAlarm() || !sensorIsAvailable() ||
+      waterLevelPercent >= pumpAutoOffLevel ||
+      !featureSsrEnabled() || manualOverrideActive || manualPumpState ||
+      autoPumpState == AUTO_FILLING || autoPumpState == AUTO_RETRY_WAIT) {
+    return false;
+  }
+  alarmFillActive = true;
+  startAutomaticFilling(reason ? reason : "alarm request");
+  if (autoPumpState != AUTO_FILLING || !manualPumpState) {
+    alarmFillActive = false;
+    return false;
+  }
+  return true;
 }
 
 void stopAutomaticFilling(const char* reason, bool scheduleRetry) {
   drivePumpOutput(false);
   setAutoPendingOn(false);
-  Serial.printf("AUTO FILL STOPPED: %s\n", reason);
+  Serial.printf("FILL STOPPED: %s\n", reason ? reason : "unspecified");
   fillingConfirmed = false;
 
   if (scheduleRetry) {
-    failedAttempts++;
-    retryAt = millis() + getRetryInterval();
+    manualRetryAttemptActive = false;
+    if (failedAttempts < 250) ++failedAttempts;
+    const unsigned long interval = getRetryInterval();
+    retryAt = millis() + interval;
+    retryTargetEpoch = timeIsValid()
+        ? nowLocal() + (time_t)(interval / 1000UL) : 0;
     autoPumpState = AUTO_RETRY_WAIT;
-    Serial.printf("Retry scheduled in %lu minutes\n",
-                  getRetryInterval() / 60000UL);
+    persistRetryRuntime();
+    Serial.printf("Retry scheduled in %lu minutes (attempt %u)\n",
+                  interval / 60000UL, failedAttempts);
   } else {
-    failedAttempts = 0;
+    clearRetryRuntime();
     autoPumpState = AUTO_IDLE;
+    manualRetryAttemptActive = false;
+    pumpRetryClearManualTime();
   }
 }
 
-// Handle boot resume: decide once we have a valid reading or timeout.
 void processBootResume() {
   if (!bootResumePending) return;
-
-  const unsigned long now = millis();
-  bool sensorAvailable =
-      remoteConnected && sensorReadingValid && waterLevelValid;
-
-  if (sensorAvailable) {
+  // A persisted retry sequence takes precedence over generic power-loss
+  // resume. Otherwise a reset during a retry could bypass its cooldown.
+  if (autoPumpState == AUTO_RETRY_WAIT) {
     bootResumePending = false;
-
-    if (!autoModeEnabled) {
-      setAutoPendingOn(false);
-      return;
-    }
-
-    if (waterLevelPercent >= pumpAutoOffLevel) {
-      Serial.println(
-        "Boot resume skipped: tank already full"
-      );
-      setAutoPendingOn(false);
-      return;
-    }
-
-    if (waterLevelPercent <= pumpAutoOnLevel) {
-      Serial.printf(
-        "Boot resume: level %.1f%% <= ON %.1f%%; resuming fill\n",
-        waterLevelPercent, pumpAutoOnLevel
-      );
-      startAutomaticFilling("power-loss resume");
-      return;
-    }
-
-    // Between ON and OFF: continue filling (we were filling before
-    // power loss) until target reached, consistent with normal
-    // filling behaviour which does not stop between thresholds.
-    Serial.printf(
-      "Boot resume: level %.1f%% between thresholds; resuming fill\n",
-      waterLevelPercent
-    );
-    startAutomaticFilling("power-loss resume");
+    setAutoPendingOn(false);
     return;
   }
-
-  if ((long)(now - bootResumeWaitUntil) >= 0) {
-    bootResumePending = false;
-    Serial.println(
-      "Boot resume aborted: no valid sensor data within window"
-    );
-    setAutoPendingOn(false);
+  const unsigned long now = millis();
+  if (!sensorIsAvailable()) {
+    if ((long)(now - bootResumeWaitUntil) >= 0) {
+      bootResumePending = false;
+      setAutoPendingOn(false);
+      Serial.println("Boot resume aborted: no valid sensor data");
+    }
+    return;
   }
+  bootResumePending = false;
+  if (!managementAllowsAuto() || waterLevelPercent >= pumpAutoOffLevel) {
+    setAutoPendingOn(false);
+    return;
+  }
+  startAutomaticFilling("power-loss resume");
 }
 
 void updateAutomaticPumpController() {
   processBootResume();
 
-  // Manual override has priority; pause auto controller while it runs.
-  if (manualOverrideActive) {
-    bool sensorAvailable =
-        remoteConnected && sensorReadingValid && waterLevelValid;
+  if (!featureSsrEnabled()) {
+    if (manualOverrideActive) stopManualOverride("SSR interlock disabled");
+    drivePumpOutput(false);
+    setAutoPendingOn(false);
+    if (autoPumpState == AUTO_FILLING) autoPumpState = AUTO_WAIT_SENSOR;
+    alarmFillActive = false;
+    return;
+  }
 
-    if (!sensorAvailable) {
+  if (manualOverrideActive) {
+    if (!sensorIsAvailable()) {
       stopManualOverride("sensor lost during override");
       return;
     }
-
+    if (waterLevelPercent >= pumpAutoOffLevel) {
+      stopManualOverride("full threshold reached during manual override");
+      return;
+    }
+    if (!manualRiseConfirmed &&
+        waterLevelPercent >= manualStartLevel + MIN_CONFIRMED_RISE_PERCENT) {
+      manualRiseConfirmed = true;
+    }
+    if (!manualRiseConfirmed &&
+        millis() - manualOverrideStartedAt >= NO_RISE_TIMEOUT_MS) {
+      stopManualOverride("no water rise during manual override");
+      return;
+    }
     if (millis() - manualOverrideStartedAt >=
         (unsigned long)manualOverrideMinutes * 60UL * 1000UL) {
       stopManualOverride("timeout reached");
@@ -247,24 +375,24 @@ void updateAutomaticPumpController() {
     return;
   }
 
-  if (!autoModeEnabled) {
+  // A timer or scheduled alarm session remains valid even in Alarm-only mode.
+  // Autonomous low-level starts are separately gated by the selected mode.
+  if (!managementAllowsAuto() && !alarmFillActive &&
+      autoPumpState != AUTO_RETRY_WAIT) {
+    if (autoPumpState == AUTO_FILLING) stopAutomaticFilling("automatic mode disabled", false);
     autoPumpState = AUTO_IDLE;
-    failedAttempts = 0;
     fillingConfirmed = false;
     return;
   }
 
   const unsigned long now = millis();
-
-  bool sensorAvailable =
-      remoteConnected && sensorReadingValid && waterLevelValid;
-
-  if (!sensorAvailable) {
+  if (!sensorIsAvailable()) {
     if (autoPumpState == AUTO_FILLING) {
       drivePumpOutput(false);
       setAutoPendingOn(false);
       autoPumpState = AUTO_WAIT_SENSOR;
-      Serial.println("SAFETY STOP: Sensor/LoRa data unavailable");
+      alarmFillActive = false;
+      Serial.println("SAFETY STOP: LoRa/sensor data unavailable");
     } else if (autoPumpState == AUTO_IDLE) {
       autoPumpState = AUTO_WAIT_SENSOR;
     }
@@ -273,49 +401,98 @@ void updateAutomaticPumpController() {
 
   if (autoPumpState == AUTO_WAIT_SENSOR) {
     autoPumpState = AUTO_IDLE;
-    Serial.println("Sensor restored; automatic controller ready");
+    Serial.println("Sensor restored; controller ready");
   }
+
+  // Warning tone: first warning immediately, then every ten minutes.
+  const bool warning = pumpRetryWarningActive();
+  if (warning && !retryWarningWasActive) {
+    buzzerBeep(120, buzzerVolume());
+    lastRetryWarningBeep = now;
+  } else if (warning && now - lastRetryWarningBeep >= RETRY_WARNING_BEEP_MS) {
+    buzzerBeep(120, buzzerVolume());
+    lastRetryWarningBeep = now;
+  }
+  retryWarningWasActive = warning;
 
   switch (autoPumpState) {
     case AUTO_IDLE:
-      if (waterLevelPercent <= pumpAutoOnLevel) {
-        startAutomaticFilling("level <= ON threshold");
+      if (managementAllowsAuto() && waterLevelPercent <= pumpAutoOnLevel) {
+        startAutomaticFilling("water level at/below ON threshold");
       }
       break;
 
     case AUTO_FILLING:
       if (waterLevelPercent >= pumpAutoOffLevel) {
-        stopAutomaticFilling("Target water level reached", false);
+        stopAutomaticFilling("full threshold reached", false);
         break;
       }
       if (now - pumpStartedAt >= MAX_PUMP_RUNTIME_MS) {
-        stopAutomaticFilling("Maximum pump runtime exceeded", true);
+        stopAutomaticFilling("maximum runtime exceeded", true);
         break;
       }
       if (!fillingConfirmed &&
           waterLevelPercent >= pumpStartLevel + MIN_CONFIRMED_RISE_PERCENT) {
         fillingConfirmed = true;
-        Serial.println("Water rise confirmed; filling continues");
+        Serial.println("Water rise confirmed");
       }
-      if (!fillingConfirmed &&
-          now - pumpStartedAt >= NO_RISE_TIMEOUT_MS) {
-        stopAutomaticFilling("Water level did not rise within 15 minutes", true);
+      if (!fillingConfirmed && now - pumpStartedAt >= NO_RISE_TIMEOUT_MS) {
+        stopAutomaticFilling("no water rise within 15 minutes", true);
       }
       break;
 
-    case AUTO_RETRY_WAIT:
-      if (waterLevelPercent > pumpAutoOnLevel) {
-        failedAttempts = 0;
+   case AUTO_RETRY_WAIT: {
+      if (waterLevelPercent >= pumpAutoOffLevel) {
+        // Water has reached the target while the pump was paused; no retry is needed.
+        clearRetryRuntime();
+        autoPumpState = AUTO_IDLE;
+        manualRetryAttemptActive = false;
+        pumpRetryClearManualTime();
+        break;
+      }
+      if (!managementAllowsAuto() && !alarmFillActive) {
+        clearRetryRuntime();
+        autoPumpState = AUTO_IDLE;
+        manualRetryAttemptActive = false;
+        pumpRetryClearManualTime();
+        break;
+      }
+      if (manualRetryEnabled) {
+        if (timeIsValid()) {
+          if (manualRetryTarget == 0) manualRetryTarget = calculateNextRetryTarget();
+          if (manualRetryTarget != 0 && nowLocal() >= manualRetryTarget) {
+            // Suppress the red alert while the user-requested retry attempt
+            // is actually running. If it fails again, scheduleRetry clears
+            // this latch and the warning returns.
+            manualRetryEnabled = false;
+            manualRetryTarget = 0;
+            retryTargetEpoch = 0;
+            retryPrefs.begin("retry-config", false);
+            retryPrefs.putBool("timeEn", false);
+            retryPrefs.end();
+            manualRetryAttemptActive = true;
+            retryAt = millis();
+            persistRetryRuntime();
+          }
+        }
+      } else if (!alarmFillActive && !managementAllowsAuto() &&
+                 waterLevelPercent > pumpAutoOnLevel) {
+        clearRetryRuntime();
         autoPumpState = AUTO_IDLE;
         break;
       }
-      if ((long)(now - retryAt) >= 0) {
+
+      bool retryDue = (long)(now - retryAt) >= 0;
+      if (retryTargetEpoch > 0 && timeIsValid()) {
+        retryDue = nowLocal() >= retryTargetEpoch;
+      }
+      if (!manualRetryEnabled && retryDue) {
         startAutomaticFilling("retry timer");
       }
-      break;
+         break;
+    }
 
     case AUTO_WAIT_SENSOR:
       break;
   }
 }
-

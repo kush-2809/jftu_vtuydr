@@ -17,6 +17,7 @@ const unsigned long WIFI_CONNECT_TIMEOUT = 15000;
 const unsigned long WIFI_RETRY_INTERVAL = 10000;
 
 bool wifiApActive = false;
+bool provisioningRequested = false;
 bool wifiConnecting = false;
 bool wifiWasConnected = false;
 bool mdnsStarted = false;
@@ -96,7 +97,7 @@ void wifiManagerUpdate() {
       wifiWasConnected = true;
     }
     wifiConnecting = false;
-    if (wifiApActive) {
+    if (wifiApActive && !provisioningRequested) {
       stopSmartTankAP();
       WiFi.mode(WIFI_STA);
     }
@@ -134,7 +135,13 @@ void wifiManagerHandlePortal() {
   webPortalHandleClient();
 }
 
+void wifiManagerStartProvisioning() {
+  provisioningRequested = true;
+  startSmartTankAP();
+}
+
 void wifiManagerSaveCredentials(const String& ssid, const String& password) {
+  provisioningRequested = false;
   savedWiFiSSID = ssid;
   savedWiFiPassword = password;
   wifiPrefs.putString("ssid", savedWiFiSSID);
@@ -166,6 +173,10 @@ int wifiManagerGetRSSI() {
 
 String wifiManagerGetHostname() {
   return String(MDNS_HOSTNAME) + ".local";
+}
+
+String wifiManagerGetSSID() {
+  return wifiManagerIsConnected() ? WiFi.SSID() : String("Not connected");
 }
 
 String wifiManagerGetIP() {

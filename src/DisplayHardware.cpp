@@ -6,7 +6,7 @@
 #define BL_ACTIVE_HIGH true
 #define BL_FREQ 5000
 #define BL_BITS 8
-#define ROTATION 1
+#define ROTATION 0
 
 void backlightInit() {
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
@@ -18,10 +18,10 @@ void backlightInit() {
 }
 
 void backlightSet(float brightness) {
-  if (brightness < 0.02f) brightness = 0.02f;
+  if (brightness < 0.0f) brightness = 0.0f;
   if (brightness > 1.00f) brightness = 1.00f;
-  int duty = (int)(255.0f * brightness * brightness);
-  if (duty < 4) duty = 4;
+  int duty = brightness <= 0.0f ? 0 : (int)(255.0f * brightness * brightness);
+  if (brightness > 0.0f && duty < 4) duty = 4;
   if (!BL_ACTIVE_HIGH) duty = 255 - duty;
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
   ledcWrite(BL_PIN, duty);

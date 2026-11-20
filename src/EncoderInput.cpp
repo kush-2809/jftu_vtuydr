@@ -34,8 +34,27 @@ void updateEncoder() {
   encoderSteps += encoderTable[index];
   lastEncoderState = currentState;
 
-  if (encoderSteps >= 4)  { encoderSteps = 0; displayWake(); handleEncoderRotation( 1); }
-  if (encoderSteps <= -4) { encoderSteps = 0; displayWake(); handleEncoderRotation(-1); }
+  if (encoderSteps >= 4) {
+  encoderSteps = 0;
+
+  if (uiPage() == Page::Dashboard)
+    displayMarkActivity();
+  else
+    displayWake();
+
+  handleEncoderRotation(1);
+}
+
+if (encoderSteps <= -4) {
+  encoderSteps = 0;
+
+  if (uiPage() == Page::Dashboard)
+    displayMarkActivity();
+  else
+    displayWake();
+
+  handleEncoderRotation(-1);
+}
 
   unsigned long now = millis();
   int reading = digitalRead(ENC_SW);

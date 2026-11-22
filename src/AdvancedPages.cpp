@@ -278,7 +278,9 @@ void uiNetworkWiFiDraw() {
   canvas.setCursor(10,landscape?126:168);canvas.print("SmartTank");
   canvas.setTextSize(1);canvas.setTextColor(t.muted,t.bg);
   canvas.setCursor(10,landscape?146:194);canvas.print("Password: Tank@1234");
-  canvas.setCursor(10,landscape?163:211);canvas.print("Open http://192.168.4.1");
+ canvas.setCursor(10,landscape?163:228);
+canvas.print("Open http://");
+canvas.print(wifiManagerGetActiveAPIP());
   canvas.setCursor(10,landscape?180:228);
   canvas.print(wifiManagerIsAPActive()?"Setup AP: ACTIVE":"Press to enable setup AP");
   simpleFooter("PRESS: ENABLE SETUP AP  HOLD: BACK");

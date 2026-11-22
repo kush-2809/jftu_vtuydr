@@ -37,6 +37,9 @@ void saveOverrideEdit() {
 void cancelOverrideEdit() { draftOverrideMinutes = manualOverrideMinutes; overrideEditing = false; }
 
 void handleShortPress() {
+    if (buzzerVolume() > 0) {
+    buzzerBeep(25, buzzerVolume());
+  }
   // Menu pages act immediately and must not leave a pending press for the
   // newly opened child page.
   if (uiInMenu()) {
@@ -97,8 +100,8 @@ void handleLongPress() {
 }
 
 void handleEncoderRotation(int direction) {
-      if (buzzerVolume() > 0) {
-    buzzerBeep(18, buzzerVolume());
+  if (buzzerVolume() > 0) {
+    buzzerBeep(25, buzzerVolume());
   }
   if (uiInMenu()) {
     const int n = menuItemCount(uiPage());

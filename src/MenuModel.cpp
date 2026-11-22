@@ -41,7 +41,7 @@ static const MenuItem kManagement[] = {
 };
 static const MenuItem kNetwork[] = {
   {"Link Diagnostics", Page::NetworkStatus},
-  {"Change Wi-Fi", Page::NetworkWiFi},
+ {"Wi-Fi / IP Setup", Page::NetworkWiFi},
 };
 static const MenuItem kClean[] = {
   {"Reboot Device", Page::CleanReboot},

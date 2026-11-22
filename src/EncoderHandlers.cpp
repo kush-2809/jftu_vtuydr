@@ -111,6 +111,7 @@ void handleEncoderRotation(int direction) {
   }
   if (uiPage() == Page::SystemInfo) {
     adminGestureFeed(direction);
+    uiScrollBy(direction, 252 - (H - 24));
     return;
   }
  if (uiPage() == Page::Dashboard) {

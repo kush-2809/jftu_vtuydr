@@ -6,6 +6,7 @@ static Page g_stack[16];
 static uint8_t g_depth = 1;
 static int g_menuIndex = 0;
 static int g_pendingRot = 0;
+static int g_scrollOffset = 0;
 static bool g_pendingPress = false;
 static bool g_pendingLong = false;
 
@@ -21,6 +22,7 @@ void uiInit() {
   g_depth = 1;
   g_menuIndex = 0;
   g_pendingRot = 0;
+  g_scrollOffset = 0;
   g_pendingPress = false;
   g_pendingLong = false;
   g_dirCount = 0;
@@ -36,16 +38,25 @@ void uiInit() {
 
 Page uiPage() { return g_stack[g_depth - 1]; }
 void uiPush(Page p) {
-  if (g_depth < (sizeof(g_stack) / sizeof(g_stack[0]))) {
-    g_stack[g_depth++] = p;
-  }
+  if (g_depth < (sizeof(g_stack) / sizeof(g_stack[0]))) g_stack[g_depth++] = p;
   g_menuIndex = 0;
+  g_scrollOffset = 0;
 }
 void uiPop() {
   if (g_depth > 1) --g_depth;
   g_menuIndex = 0;
+  g_scrollOffset = 0;
 }
-void uiGoRoot() { g_depth = 1; g_menuIndex = 0; }
+void uiGoRoot() { g_depth = 1; g_menuIndex = 0; g_scrollOffset = 0; }
+int uiScrollOffset() { return g_scrollOffset; }
+void uiScrollBy(int direction, int maxOffset) {
+  if (maxOffset < 0) maxOffset = 0;
+  if (direction > 0) g_scrollOffset += 18;
+  else if (direction < 0) g_scrollOffset -= 18;
+  if (g_scrollOffset < 0) g_scrollOffset = 0;
+  if (g_scrollOffset > maxOffset) g_scrollOffset = maxOffset;
+}
+void uiScrollReset() { g_scrollOffset = 0; }
 int uiMenuIndex() { return g_menuIndex; }
 void uiSetMenuIndex(int i) { g_menuIndex = i < 0 ? 0 : i; }
 

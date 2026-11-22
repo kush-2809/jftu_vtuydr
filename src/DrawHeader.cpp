@@ -89,8 +89,10 @@ void drawHeader() {
 
 void drawTankGraphic() {
   const Theme& t = themeGet();
-  const int tankX = 14, tankY = 62, tankW = 88, tankH = 142;
-  const int innerX = tankX + 8, innerY = tankY + 8;
+  const bool landscape=W>H;
+  const int tankX=14,tankY=landscape?58:62;
+  const int tankW=landscape?76:88,tankH=landscape?126:142;
+  const int innerX=tankX+8,innerY=tankY+8;
   const int innerW = tankW - 16, innerH = tankH - 16;
 
   canvas.fillRoundRect(innerX, innerY, innerW, innerH, 6, t.tankEmpty);

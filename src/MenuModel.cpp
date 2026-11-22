@@ -37,6 +37,7 @@ static const MenuItem kLayout[] = {
 static const MenuItem kManagement[] = {
   {"Operating Mode", Page::ManagementMode},
   {"Buzzer Volume", Page::ManagementBuzzer},
+  {"Screen Rotation", Page::ManagementRotation},
 };
 static const MenuItem kNetwork[] = {
   {"Link Diagnostics", Page::NetworkStatus},

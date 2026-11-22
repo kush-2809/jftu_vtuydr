@@ -58,6 +58,7 @@ void drawCurrentScreen() {
 
     case Page::ManagementMode:     uiManagementModeDraw(); return;
     case Page::ManagementBuzzer:   uiManagementBuzzerDraw(); return;
+    case Page::ManagementRotation: uiManagementRotationDraw(); return;
     case Page::NetworkStatus:      uiNetworkStatusDraw(); return;
     case Page::NetworkWiFi:        uiNetworkWiFiDraw(); return;
 
@@ -137,6 +138,7 @@ void loop() {
     case Page::Telemetry:          uiTelemetryTick(); break;
     case Page::ManagementMode:    uiManagementModeTick(); break;
     case Page::ManagementBuzzer:  uiManagementBuzzerTick(); break;
+    case Page::ManagementRotation: uiManagementRotationTick(); break;
     case Page::NetworkStatus:     uiNetworkStatusTick(); break;
     case Page::NetworkWiFi:       uiNetworkWiFiTick(); break;
     case Page::CleanReboot:

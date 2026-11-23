@@ -10,6 +10,7 @@
 #include "TimeService.h"
 #include "TankSettings.h"
 #include "Scheduler.h"
+#include "DisplayOrientation.h"
 #include <Preferences.h>
 #include <math.h>
 #include <time.h>
@@ -40,14 +41,13 @@ static int clampValue(int value, int lo, int hi) {
 
 static void labelValue(int y, const char* label, const String& value,
                        uint16_t valueColor = 0) {
-  const Theme& t = themeGet();
-  canvas.setTextSize(1);
-  canvas.setTextColor(t.muted, t.bg);
-  canvas.setCursor(10, y);
-  canvas.print(label);
-  canvas.setTextColor(valueColor ? valueColor : t.fg, t.bg);
-  canvas.setCursor(128, y);
-  canvas.print(value);
+  const int drawY=y-uiScrollOffset();
+  if(drawY<38||drawY>H-28)return;
+  const Theme& t=themeGet();
+  canvas.setTextSize(1);canvas.setTextColor(t.muted,t.bg);
+  canvas.setCursor(10,drawY);canvas.print(label);
+  canvas.setTextColor(valueColor?valueColor:t.fg,t.bg);
+  canvas.setCursor(128,drawY);canvas.print(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -96,8 +96,10 @@ void uiManagementModeDraw() {
   canvas.setTextColor(t.muted, t.bg);
   canvas.setCursor(10, 49);
   canvas.print("SELECT HOW THE PUMP IS CONTROLLED");
+  const int modeTop = W > H ? 48 : 72;
+  const int modeStep = W > H ? 36 : 39;
   for (int i = 0; i < 4; ++i) {
-    const int y = 72 + i * 39;
+    const int y = modeTop + i * modeStep;
     const bool selected = i == static_cast<int>(shown);
     if (selected) {
       canvas.fillRoundRect(8, y, W - 16, 33, 6, t.selBg);
@@ -142,6 +144,48 @@ void uiManagementBuzzerTick() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// MANAGEMENT: SCREEN ORIENTATION
+// ---------------------------------------------------------------------------
+static uint8_t rotationDraft=0;
+static bool rotationLoaded=false;
+void uiManagementRotationTick(){
+  if(!rotationLoaded){rotationDraft=displayRotation();rotationLoaded=true;}
+  const int dir=uiConsumeRotation();
+  if(uiConsumeLongPress()){rotationLoaded=false;uiPop();return;}
+  if(dir)rotationDraft=(uint8_t)((rotationDraft+(dir>0?1:3))&0x03);
+  if(uiConsumePress()){
+    if(displaySetRotation(rotationDraft)){
+      buzzerBeep(70,buzzerVolume());rotationLoaded=false;uiPop();
+    }else{rotationDraft=displayRotation();buzzerBeep(180,3);}
+  }
+}
+void uiManagementRotationDraw(){
+  const Theme& t=themeGet();simpleHeader("SCREEN ROTATION");
+  const uint8_t shown=rotationLoaded?rotationDraft:displayRotation();
+  const char* names[]={"Portrait 0 deg","Landscape 90 deg","Portrait 180 deg","Landscape 270 deg"};
+  canvas.setTextSize(1);canvas.setTextColor(t.muted,t.bg);
+  canvas.setCursor(10,50);canvas.print("CHOOSE DISPLAY ORIENTATION");
+  const bool landscape=W>H;
+  const int rotationTop=landscape?48:70;
+  const int rotationStep=landscape?34:37;
+  const int rotationRowH=landscape?28:31;
+  for(int i=0;i<4;++i){
+    const int y=rotationTop+i*rotationStep;const bool selected=i==shown;
+    if(selected){canvas.fillRoundRect(8,y,W-16,rotationRowH,5,t.selBg);canvas.fillRect(8,y,3,rotationRowH,t.accent);}
+    canvas.setTextSize(2);canvas.setTextColor(selected?t.selFg:t.fg,selected?t.selBg:t.bg);
+    canvas.setCursor(18,y+8);canvas.print(names[i]);
+    if(i==displayRotation()){
+      canvas.setTextSize(1);canvas.setTextColor(selected?t.selFg:t.ok,selected?t.selBg:t.bg);
+      canvas.setCursor(W-52,y+11);canvas.print("ACTIVE");
+    }
+  }
+  canvas.setTextSize(1);canvas.setTextColor(t.muted,t.bg);
+  canvas.setCursor(10,landscape?H-38:222);canvas.print("Landscape gives the dashboard more width.");
+  simpleFooter("ROTATE: CHOOSE  PRESS: APPLY  HOLD: CANCEL");
+  canvas.pushSprite(0,0);
+}
+
 void uiManagementBuzzerDraw() {
   const Theme& t = themeGet();
   simpleHeader("BUZZER VOLUME");
@@ -175,9 +219,9 @@ void uiManagementBuzzerDraw() {
 // NETWORK: LIVE LINK DIAGNOSTICS
 // ---------------------------------------------------------------------------
 void uiNetworkStatusTick() {
-  uiConsumeRotation();
-  uiConsumePress();
-  if (uiConsumeLongPress()) uiPop();
+  const int dir=uiConsumeRotation();uiConsumePress();
+  if(uiConsumeLongPress()){uiPop();return;}
+  if(dir)uiScrollBy(dir,227-(H-26));
 }
 
 void uiNetworkStatusDraw() {
@@ -198,7 +242,8 @@ void uiNetworkStatusDraw() {
   labelValue(181, "IP address", wifiManagerGetIP());
   labelValue(200, "SSID", wifiManagerGetSSID());
   labelValue(219, "Packets", String((unsigned long)packetsReceived));
-  simpleFooter("LIVE STATUS  HOLD: BACK");
+  uiDrawScrollIndicator(227-(H-26));
+  simpleFooter("ROTATE: SCROLL  HOLD: BACK");
   canvas.pushSprite(0, 0);
 }
 
@@ -215,39 +260,31 @@ void uiNetworkWiFiTick() {
 }
 
 void uiNetworkWiFiDraw() {
-  const Theme& t = themeGet();
+  const Theme& t=themeGet();
+  const bool landscape=W>H;
   simpleHeader("CHANGE WI-FI");
-  canvas.setTextSize(1);
-  canvas.setTextColor(t.muted, t.bg);
-  canvas.setCursor(10, 52);
-  canvas.print("CURRENT CONNECTION");
-  canvas.setTextSize(2);
-  canvas.setTextColor(t.fg, t.bg);
-  canvas.setCursor(10, 72);
-  canvas.print(wifiManagerIsConnected() ? wifiManagerGetSSID() : "Offline");
-  canvas.setTextSize(1);
-  canvas.setTextColor(t.muted, t.bg);
-  canvas.setCursor(10, 105);
-  canvas.print(wifiManagerIsConnected() ? wifiManagerGetIP() : "Setup network is available");
-
-  canvas.drawFastHLine(10, 132, W - 20, t.muted);
-  canvas.setTextColor(t.accent, t.bg);
-  canvas.setCursor(10, 148);
+  canvas.setTextSize(1);canvas.setTextColor(t.muted,t.bg);
+  canvas.setCursor(10,landscape?42:52);canvas.print("CURRENT CONNECTION");
+  canvas.setTextSize(landscape?1:2);canvas.setTextColor(t.fg,t.bg);
+  canvas.setCursor(10,landscape?58:72);
+  canvas.print(wifiManagerIsConnected()?wifiManagerGetSSID():"Offline");
+  canvas.setTextSize(1);canvas.setTextColor(t.muted,t.bg);
+  canvas.setCursor(10,landscape?77:105);
+  canvas.print(wifiManagerIsConnected()?wifiManagerGetIP():"Setup network is available");
+  canvas.drawFastHLine(10,landscape?95:132,W-20,t.muted);
+  canvas.setTextColor(t.accent,t.bg);canvas.setCursor(10,landscape?109:148);
   canvas.print("SETUP ACCESS POINT");
-  canvas.setTextSize(2);
-  canvas.setTextColor(t.fg, t.bg);
-  canvas.setCursor(10, 168);
-  canvas.print("SmartTank");
-  canvas.setTextSize(1);
-  canvas.setTextColor(t.muted, t.bg);
-  canvas.setCursor(10, 194);
-  canvas.print("Password: Tank@1234");
-  canvas.setCursor(10, 211);
-  canvas.print("Open http://192.168.4.1");
-  canvas.setCursor(10, 228);
-  canvas.print(wifiManagerIsAPActive() ? "Setup AP: ACTIVE" : "Press to enable setup AP");
+  canvas.setTextSize(landscape?1:2);canvas.setTextColor(t.fg,t.bg);
+  canvas.setCursor(10,landscape?126:168);canvas.print("SmartTank");
+  canvas.setTextSize(1);canvas.setTextColor(t.muted,t.bg);
+  canvas.setCursor(10,landscape?146:194);canvas.print("Password: Tank@1234");
+ canvas.setCursor(10,landscape?163:228);
+canvas.print("Open http://");
+canvas.print(wifiManagerGetActiveAPIP());
+  canvas.setCursor(10,landscape?180:228);
+  canvas.print(wifiManagerIsAPActive()?"Setup AP: ACTIVE":"Press to enable setup AP");
   simpleFooter("PRESS: ENABLE SETUP AP  HOLD: BACK");
-  canvas.pushSprite(0, 0);
+  canvas.pushSprite(0,0);
 }
 
 // ---------------------------------------------------------------------------

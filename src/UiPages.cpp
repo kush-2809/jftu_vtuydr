@@ -129,8 +129,10 @@ void uiAlarmSchedulerDraw() {
   TimeWindow& w = schedulerWindow();
   pageHeader("DAILY SCHEDULER");
   const char* labels[] = {"Start hour", "Start minute", "Every day", "Enabled", "SAVE"};
+  const int schedulerTop = W > H ? 44 : 55;
+  const int schedulerStep = W > H ? 34 : 39;
   for (int i = 0; i < 5; ++i) {
-    int y = 55 + i * 39;
+    int y = schedulerTop + i * schedulerStep;
     bool selected = i == schStep;
     if (selected) canvas.fillRoundRect(8, y - 3, W - 16, 31, 5, t.selBg);
     canvas.setTextSize(1);
@@ -152,8 +154,9 @@ void uiAlarmSchedulerDraw() {
   }
   canvas.setTextSize(1);
   canvas.setTextColor(t.muted, t.bg);
-  canvas.setCursor(10, 257);
-  canvas.print("Starts filling at this time; stops at full threshold.");
+  canvas.setCursor(10, W > H ? H - 36 : 257);
+  canvas.print(W > H ? "Scheduled start; stop at OFF threshold." :
+                       "Starts filling at this time; stops at full threshold.");
   pageFooter("ROTATE: EDIT  PRESS: NEXT / SAVE  HOLD: BACK");
   canvas.pushSprite(0, 0);
 }
@@ -452,13 +455,12 @@ void uiTelemetryDraw() {
   pageHeader("TELEMETRY");
   canvas.setTextSize(1);
 
+  const int scroll=uiScrollOffset();
   auto row = [&](int y, const char* label, const String& value, uint16_t color) {
-    canvas.setTextColor(t.muted, t.bg);
-    canvas.setCursor(10, y);
-    canvas.print(label);
-    canvas.setTextColor(color, t.bg);
-    canvas.setCursor(132, y);
-    canvas.print(value);
+    const int drawY=y-scroll;
+    if(drawY<37||drawY>H-28)return;
+    canvas.setTextColor(t.muted,t.bg);canvas.setCursor(10,drawY);canvas.print(label);
+    canvas.setTextColor(color,t.bg);canvas.setCursor(132,drawY);canvas.print(value);
   };
 
   const int8_t cpu = telemetryCpuPercent();
@@ -480,10 +482,12 @@ void uiTelemetryDraw() {
   row(151, "PSRAM total", psramTotal ? String(psramTotal) + " KB" : "Not detected", t.fg);
   row(169, "Uptime", String(uptime / 3600) + "h " + String((uptime / 60) % 60) + "m", t.fg);
 
-  canvas.drawFastHLine(8, 190, W - 16, t.muted);
-  canvas.setTextColor(t.accent, t.bg);
-  canvas.setCursor(10, 201);
-  canvas.print("ELECTRICAL MEASUREMENTS");
+  const int dividerY=190-scroll,sectionY=201-scroll;
+  if(dividerY>=37&&dividerY<=H-28)canvas.drawFastHLine(8,dividerY,W-16,t.muted);
+  if(sectionY>=37&&sectionY<=H-28){
+    canvas.setTextColor(t.accent,t.bg);canvas.setCursor(10,sectionY);
+    canvas.print("ELECTRICAL MEASUREMENTS");
+  }
   const bool acVoltageReady = isfinite(telemetryAcVoltage());
   const bool acCurrentReady = isfinite(telemetryAcCurrent());
   const bool espVoltageReady = isfinite(telemetryEspVoltage());
@@ -494,12 +498,13 @@ void uiTelemetryDraw() {
        ? String(telemetryEspVoltage(), 2) + " V / " + String(telemetryEspCurrent(), 2) + " A"
        : "Sensor not fitted", t.warn);
 
-  pageFooter("CPU LOAD NEEDS RTOS STATS  HOLD: BACK");
+  uiDrawScrollIndicator(262-(H-26));
+  pageFooter("ROTATE: SCROLL  HOLD: BACK");
   canvas.pushSprite(0, 0);
 }
 
 void uiTelemetryTick() {
-  if (uiConsumeLongPress()) { uiPop(); return; }
-  uiConsumeRotation();    // ignored
-  uiConsumePress();       // ignored
+  if(uiConsumeLongPress()){uiPop();return;}
+  const int dir=uiConsumeRotation();uiConsumePress();
+  if(dir)uiScrollBy(dir,262-(H-26));
 }

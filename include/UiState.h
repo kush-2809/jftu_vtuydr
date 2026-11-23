@@ -8,7 +8,7 @@ enum class Page : uint8_t {
   Display, DisplayTimeout, DisplayDim, DisplayDateTime, DisplayNTP,
   Layout, SystemInfo, Management, Network, SystemClean,
   SystemRetry, AdminConfig,
-  ManagementMode, ManagementBuzzer,
+  ManagementMode, ManagementBuzzer, ManagementRotation,
   NetworkStatus, NetworkWiFi,
   CleanReboot, CleanClearCache, CleanFactoryReset,
   AdminTankHeight, AdminTankCapacity, AdminThresholds,
@@ -31,6 +31,10 @@ bool uiConsumeLongPress();    // true once
 void uiInjectRotation(int d); // called from encoder handler
 void uiInjectPress();
 void uiInjectLongPress();
+int uiScrollOffset();
+void uiScrollBy(int direction, int maxOffset);
+void uiScrollReset();
+void uiDrawScrollIndicator(int maxOffset);
 
 // Admin gate
 void adminGestureFeed(int dir);

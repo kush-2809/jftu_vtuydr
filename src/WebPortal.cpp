@@ -30,7 +30,19 @@ main{max-width:760px;margin:auto}.top{display:flex;justify-content:space-between
 h1{font-size:25px;margin:8px 0}.muted{color:#94a3b8;font-size:13px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:16px 0}
 .card{background:#172235;border:1px solid #29384f;border-radius:14px;padding:16px}.value{font-size:27px;font-weight:700;margin-top:8px}.wide{grid-column:1/-1}
 button{border:0;border-radius:9px;padding:12px 15px;background:#0d9488;color:white;font-weight:700;cursor:pointer;margin:4px 4px 4px 0}button.danger{background:#b45309}button.secondary{background:#334155}
-input{width:100%;padding:11px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:white;margin:6px 0 12px}label{font-size:13px;color:#cbd5e1}
+input,select{
+  width:100%;
+  padding:11px;
+  border-radius:8px;
+  border:1px solid #475569;
+  background:#0f172a;
+  color:white;
+  margin:6px 0 12px;
+}
+
+input:disabled{
+  opacity:0.45;
+}label{font-size:13px;color:#cbd5e1}
 .status{padding:8px 10px;border-radius:8px;background:#26364d;display:inline-block;font-size:13px}.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:480px){.row{grid-template-columns:1fr}}
 </style></head><body><main>
 <div class="top"><div><h1>SmartTank Control</h1><div class="muted">Local controller dashboard</div></div><span class="status" id="net">Loading network…</span></div>
@@ -49,14 +61,184 @@ input{width:100%;padding:11px;border-radius:8px;border:1px solid #475569;backgro
 <div><label>Tank height (cm)</label><input id="height" type="number" min="20" max="500" step="0.5" required></div></div>
 <div><label>Tank capacity (litres)</label><input id="capacity" type="number" min="1" max="100000" step="1" required></div>
 <button type="submit">Save settings</button><span class="muted" id="settingsmsg"></span></form></section>
-<section class="card wide"><h3>Wi-Fi</h3><div class="muted" id="wifiinfo">--</div><p class="muted">If connected to your router, open this page using the IP shown above or http://smarttank.local when mDNS is supported on your device.</p><form action="/save" method="POST"><label>Home Wi-Fi network name (SSID)</label><input name="ssid" maxlength="32" placeholder="Enter Wi-Fi SSID" required><label>Wi-Fi password</label><input name="password" type="password" maxlength="63" placeholder="Enter Wi-Fi password"><button type="submit">Save Wi-Fi & connect</button></form></section>
+
+<section class="card wide">
+<h3>Wi-Fi</h3>
+
+<div class="muted" id="wifiinfo">--</div>
+
+<p class="muted">
+Connect SmartTank to your home Wi-Fi network.
+</p>
+
+<form action="/save" method="POST">
+<label>Home Wi-Fi network name (SSID)</label>
+<input name="ssid" maxlength="32"
+       placeholder="Enter Wi-Fi SSID" required>
+
+<label>Wi-Fi password</label>
+<input name="password" type="password" maxlength="63"
+       placeholder="Enter Wi-Fi password">
+
+<button type="submit">Save Wi-Fi & connect</button>
+</form>
+</section>
+
+<section class="card wide">
+<h3>Network Configuration</h3>
+
+<p class="muted">
+DHCP is recommended. Static IP is optional.
+Changes apply after restarting SmartTank.
+</p>
+
+<form id="networkForm" onsubmit="saveNetworkConfig(event)">
+
+<label>IP Assignment</label>
+<select id="netdhcp" onchange="toggleStaticFields()">
+  <option value="1">DHCP - Automatic (Recommended)</option>
+  <option value="0">Static IP</option>
+</select>
+
+<div id="staticFields">
+
+<div class="row">
+  <div>
+    <label>Static IP Address</label>
+    <input id="netip" type="text"
+           placeholder="192.168.1.210">
+  </div>
+
+  <div>
+    <label>Gateway</label>
+    <input id="netgateway" type="text"
+           placeholder="192.168.1.1">
+  </div>
+</div>
+
+<div class="row">
+  <div>
+    <label>Subnet Mask</label>
+    <input id="netsubnet" type="text"
+           placeholder="255.255.255.0">
+  </div>
+
+  <div>
+    <label>DNS Server</label>
+    <input id="netdns" type="text"
+           placeholder="8.8.8.8">
+  </div>
+</div>
+
+</div>
+
+<label>Device Hostname (without .local)</label>
+<input id="nethost" type="text"
+       maxlength="24" placeholder="smarttank" required>
+
+<h3>Setup Access Point</h3>
+
+<div class="row">
+  <div>
+    <label>Setup AP IP Address</label>
+    <input id="netapip" type="text"
+           placeholder="192.168.4.1" required>
+  </div>
+
+  <div>
+    <label>Setup AP Subnet</label>
+    <input id="netapsubnet" type="text"
+           placeholder="255.255.255.0" required>
+  </div>
+</div>
+
+<button type="submit">Save Network Configuration</button>
+
+<div class="muted" id="networkmsg"></div>
+
+</form>
+</section>
 </div><div class="muted">Refreshes automatically every 2 seconds. Keep pump power isolated during software testing.</div>
 </main><script>
 async function post(url,body={}){try{let r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});let t=await r.text();document.getElementById('pumpmsg').textContent=t;if(!r.ok)throw Error(t);refresh()}catch(e){document.getElementById('pumpmsg').textContent='Error: '+e.message}}
 function setAuto(enabled){post('/api/auto',{enabled:enabled?'1':'0'})}
 async function saveSettings(e){e.preventDefault();let b={on:document.getElementById('on').value,off:document.getElementById('off').value,minutes:document.getElementById('mins').value,height:document.getElementById('height').value,capacity:document.getElementById('capacity').value};try{let r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(b)});let t=await r.text();document.getElementById('settingsmsg').textContent=t;if(!r.ok)throw Error(t);refresh()}catch(e){document.getElementById('settingsmsg').textContent='Error: '+e.message}}
+
+function toggleStaticFields() {
+  const dhcp = document.getElementById("netdhcp").value === "1";
+  const fields = document.querySelectorAll("#staticFields input");
+
+  fields.forEach(input => {
+    input.disabled = dhcp;
+    input.required = !dhcp;
+  });
+}
+
+async function loadNetworkConfig() {
+  try {
+    const response = await fetch("/api/network-config", {
+      cache: "no-store"
+    });
+
+    if (!response.ok) throw new Error("Could not load network settings");
+
+    const d = await response.json();
+
+    document.getElementById("netdhcp").value = d.dhcp ? "1" : "0";
+    document.getElementById("netip").value = d.ip;
+    document.getElementById("netgateway").value = d.gateway;
+    document.getElementById("netsubnet").value = d.subnet;
+    document.getElementById("netdns").value = d.dns;
+    document.getElementById("nethost").value = d.hostname;
+    document.getElementById("netapip").value = d.apip;
+    document.getElementById("netapsubnet").value = d.apsubnet;
+
+    toggleStaticFields();
+
+  } catch (error) {
+    document.getElementById("networkmsg").textContent = error.message;
+  }
+}
+
+async function saveNetworkConfig(event) {
+  event.preventDefault();
+
+  const data = {
+    dhcp: document.getElementById("netdhcp").value,
+    ip: document.getElementById("netip").value.trim(),
+    gateway: document.getElementById("netgateway").value.trim(),
+    subnet: document.getElementById("netsubnet").value.trim(),
+    dns: document.getElementById("netdns").value.trim(),
+    hostname: document.getElementById("nethost").value.trim(),
+    apip: document.getElementById("netapip").value.trim(),
+    apsubnet: document.getElementById("netapsubnet").value.trim()
+  };
+
+  const message = document.getElementById("networkmsg");
+
+  try {
+    const response = await fetch("/api/network-config", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: new URLSearchParams(data)
+    });
+
+    const result = await response.text();
+    message.textContent = result;
+
+    if (!response.ok) throw new Error(result);
+
+  } catch (error) {
+    message.textContent = "Error: " + error.message;
+  }
+}
+
 async function refresh(){try{let r=await fetch('/api/status',{cache:'no-store'});let d=await r.json();document.getElementById('level').textContent=d.levelValid?d.level.toFixed(1)+'%':'--';document.getElementById('volume').textContent=d.levelValid?d.volume.toFixed(0)+' / '+d.capacity.toFixed(0)+' L':'Level unavailable';document.getElementById('pump').textContent=d.pumpOn?'ON':'OFF';document.getElementById('pumpmode').textContent=d.override?'Manual override':(d.autoState||'Idle');document.getElementById('link').textContent=d.sensorConnected?'CONNECTED':'OFFLINE';document.getElementById('distance').textContent='Distance: '+(d.sensorValid?d.distance.toFixed(1)+' cm':'--');document.getElementById('auto').textContent=d.autoEnabled?'ENABLED':'DISABLED';document.getElementById('thresholds').textContent='ON '+d.autoOn+'% · OFF '+d.autoOff+'%';document.getElementById('net').textContent=d.wifiConnected?'Home Wi-Fi connected':(d.apActive?'SmartTank setup AP':'Wi-Fi offline');document.getElementById('wifiinfo').textContent='IP: '+d.ip+' · Host: '+d.hostname;['on','off','mins','height','capacity'].forEach((id,i)=>{let el=document.getElementById(id);if(!el.matches(':focus'))el.value=[d.autoOn,d.autoOff,d.overrideMinutes,d.height,d.capacity][i]})}catch(e){document.getElementById('net').textContent='Controller not reachable'}}
-refresh();setInterval(refresh,2000);
+refresh();
+loadNetworkConfig();
+setInterval(refresh, 2000);
 </script></body></html>
 )rawliteral";
 
@@ -171,6 +353,57 @@ void handleSettings() {
   sendMessage(200, "Settings saved to ESP32 non-volatile storage.");
 }
 
+void handleNetworkConfigGet() {
+  String json = "{";
+
+  json += "\"dhcp\":";
+  json += wifiManagerUsesDHCP() ? "true" : "false";
+
+  json += ",\"ip\":\"" + wifiManagerGetStaticIP() + "\"";
+  json += ",\"gateway\":\"" + wifiManagerGetGateway() + "\"";
+  json += ",\"subnet\":\"" + wifiManagerGetSubnet() + "\"";
+  json += ",\"dns\":\"" + wifiManagerGetDNS() + "\"";
+  json += ",\"hostname\":\"" + wifiManagerGetHostname() + "\"";
+  json += ",\"apip\":\"" + wifiManagerGetAPIP() + "\"";
+  json += ",\"apsubnet\":\"" + wifiManagerGetAPSubnet() + "\"";
+
+  json += "}";
+
+  server.send(200, "application/json", json);
+}
+
+void handleNetworkConfigSave() {
+  const char* required[] = {
+    "dhcp", "ip", "gateway", "subnet",
+    "dns", "hostname", "apip", "apsubnet"
+  };
+
+  for (const char* key : required) {
+    if (!server.hasArg(key)) {
+      sendMessage(400, String("Missing field: ") + key);
+      return;
+    }
+  }
+
+  const bool useDhcp = server.arg("dhcp") == "1";
+
+  String error;
+
+  const bool saved = wifiManagerSaveNetworkConfig(
+      useDhcp,
+      server.arg("ip"),
+      server.arg("gateway"),
+      server.arg("subnet"),
+      server.arg("dns"),
+      server.arg("hostname"),
+      server.arg("apip"),
+      server.arg("apsubnet"),
+      error
+  );
+
+  sendMessage(saved ? 200 : 400, error);
+}
+
 void handleSaveWiFi() {
   if (!server.hasArg("ssid")) { sendMessage(400, "Wi-Fi SSID is required."); return; }
   String ssid = server.arg("ssid");
@@ -192,6 +425,17 @@ void webPortalConfigure() {
   server.on("/api/pump/stop", HTTP_POST, handlePumpStop);
   server.on("/api/auto", HTTP_POST, handleAutoMode);
   server.on("/api/settings", HTTP_POST, handleSettings);
+  server.on(
+    "/api/network-config",
+    HTTP_GET,
+    handleNetworkConfigGet
+);
+
+server.on(
+    "/api/network-config",
+    HTTP_POST,
+    handleNetworkConfigSave
+);
   server.on("/save", HTTP_POST, handleSaveWiFi);
   server.on("/generate_204", HTTP_GET, handleRoot);
   server.on("/gen_204", HTTP_GET, handleRoot);

@@ -37,10 +37,11 @@ static const MenuItem kLayout[] = {
 static const MenuItem kManagement[] = {
   {"Operating Mode", Page::ManagementMode},
   {"Buzzer Volume", Page::ManagementBuzzer},
+  {"Screen Rotation", Page::ManagementRotation},
 };
 static const MenuItem kNetwork[] = {
   {"Link Diagnostics", Page::NetworkStatus},
-  {"Change Wi-Fi", Page::NetworkWiFi},
+ {"Wi-Fi / IP Setup", Page::NetworkWiFi},
 };
 static const MenuItem kClean[] = {
   {"Reboot Device", Page::CleanReboot},

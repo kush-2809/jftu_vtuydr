@@ -3,7 +3,7 @@
 #include <WiFi.h>
 #include <math.h>
 #include "WiFiManager.h"
-#include "ClockHeader.h"
+// #include "ClockHeader.h"
 #include "PumpController.h"
 
 int getSignalLevel(int rssi) {
@@ -73,58 +73,96 @@ void drawHeader() {
   canvas.setCursor(7, 10);
   canvas.print("SMART TANK");
 
-  drawClockInHeader();
+  // drawClockInHeader();
 
-  // LoRa remains visible even when disconnected; muted bars indicate no link.
-  const int loraLevel = remoteConnected ? getSignalLevel(lastRSSI) : 0;
-  drawSignalBars(W - 43, 9, loraLevel,
-                 remoteConnected ? getSignalColor(loraLevel) : t.muted);
+// Fixed horizontal alignment for both signal indicators.
+const int loraLevel = remoteConnected ? getSignalLevel(lastRSSI) : 0;
 
-  // Hide Wi-Fi entirely when not connected so the status area stays clean.
-  if (wifiManagerIsConnected()) {
-    drawWifiIcon(W - 10, 17, getSignalLevel(wifiManagerGetRSSI()));
-  }
+drawSignalBars(
+    W - 72,
+    8,
+    loraLevel,
+    remoteConnected ? getSignalColor(loraLevel) : t.muted
+);
+
+// Wi-Fi stays inside the right margin.
+if (wifiManagerIsConnected()) {
+  drawWifiIcon(
+      W - 21,
+      17,
+      getSignalLevel(wifiManagerGetRSSI())
+  );
+}
   canvas.fillRect(0, 36, W, 2, headerStateColor());
 }
 
 void drawTankGraphic() {
   const Theme& t = themeGet();
-  const int tankX = 14, tankY = 62, tankW = 88, tankH = 142;
-  const int innerX = tankX + 8, innerY = tankY + 8;
-  const int innerW = tankW - 16, innerH = tankH - 16;
+  const bool landscape = W > H;
+
+  const int tankX = 12;
+  const int tankY = landscape ? 65 : 62;
+  const int tankW = landscape ? 72 : 70;
+  const int tankH = landscape ? 110 : 112;
+
+  const int innerX = tankX + 8;
+  const int innerY = tankY + 8;
+  const int innerW = tankW - 16;
+  const int innerH = tankH - 16;
 
   canvas.fillRoundRect(innerX, innerY, innerW, innerH, 6, t.tankEmpty);
 
-  int fillHeight = 0;
   if (sensorReadingValid && waterLevelValid) {
     const float pct = constrain(waterLevelPercent, 0.0f, 100.0f);
-    fillHeight = (int)(innerH * pct / 100.0f);
-  }
-  if (fillHeight > 0) {
-    const int waterY = innerY + innerH - fillHeight;
-    canvas.fillRect(innerX + 2, waterY + 3, innerW - 4, fillHeight - 2, t.tankWater);
+    const int fillHeight = (int)(innerH * pct / 100.0f);
 
-    // Animate the surface only while the pump is actually running. When
-    // idle, keep a clean static waterline so animation communicates state.
-    const bool filling = manualPumpState || manualOverrideActive ||
-                         autoPumpState == AUTO_FILLING;
-    if (fillHeight >= 8 && filling) {
-      const float phase = millis() / 420.0f;
-      for (int x = innerX + 3; x < innerX + innerW - 3; x += 2) {
-        const int waveY = waterY + 2 + (int)(2.0f * sinf(phase + x * 0.16f));
-        canvas.drawPixel(x, waveY, t.fg);
+    if (fillHeight > 0) {
+      const int waterY = innerY + innerH - fillHeight;
+
+      if (fillHeight >= 3) {
+        canvas.fillRect(
+            innerX + 2,
+            waterY + 3,
+            innerW - 4,
+            fillHeight - 2,
+            t.tankWater
+        );
       }
-    } else {
-      canvas.drawFastHLine(innerX + 3, waterY + 2, innerW - 6, t.fg);
+
+      const bool filling =
+          manualPumpState ||
+          manualOverrideActive ||
+          autoPumpState == AUTO_FILLING;
+
+      if (fillHeight >= 8 && filling) {
+        const float phase = millis() / 420.0f;
+
+        for (int px = innerX + 3; px < innerX + innerW - 3; px += 2) {
+          const int waveY =
+              waterY + 2 + (int)(2.0f * sinf(phase + px * 0.16f));
+
+          canvas.drawPixel(px, waveY, t.fg);
+        }
+      } else {
+        canvas.drawFastHLine(
+            innerX + 3,
+            waterY + (fillHeight >= 3 ? 2 : 0),
+            innerW - 6,
+            t.fg
+        );
+      }
     }
   }
 
   canvas.drawRoundRect(tankX, tankY, tankW, tankH, 10, t.fg);
-  canvas.drawRoundRect(tankX + 24, tankY - 5, tankW - 48, 9, 3, t.fg);
+
+  canvas.drawRoundRect(
+      tankX + 20, tankY - 5,
+      tankW - 40, 9, 3, t.fg
+  );
 
   canvas.setTextSize(1);
   canvas.setTextColor(t.muted, t.bg);
-  canvas.setCursor(tankX + 31, tankY + tankH + 8);
+  canvas.setCursor(tankX + 23, tankY + tankH + 8);
   canvas.print("TANK");
-
 }

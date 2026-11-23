@@ -22,6 +22,8 @@ void uiManagementModeDraw();
 void uiManagementModeTick();
 void uiManagementBuzzerDraw();
 void uiManagementBuzzerTick();
+void uiManagementRotationDraw();
+void uiManagementRotationTick();
 void uiNetworkStatusDraw();
 void uiNetworkStatusTick();
 void uiNetworkWiFiDraw();

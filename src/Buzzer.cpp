@@ -29,7 +29,7 @@ uint8_t buzzerVolume() { return g_vol; }
 
 void buzzerBeep(uint16_t ms, uint8_t vol) {
   if (vol == 0 || ms == 0) return;
-  int duty = (vol == 1) ? 40 : (vol == 2) ? 120 : 255;
+ int duty = (vol == 1) ? 40 : (vol == 2) ? 80 : 128;
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
   ledcWrite(BUZZER_PIN, duty); delay(ms); ledcWrite(BUZZER_PIN, 0);
 #else

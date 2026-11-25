@@ -326,7 +326,8 @@ void uiSystemCleanTick() {
   } else if (action == Page::CleanFactoryReset) {
     const char* namespaces[] = {
       "tank-config", "alarm-config", "ui", "display-config",
-      "wifi-config", "control-config", "feature-config", "retry-config"
+      "wifi-config", "control-config", "feature-config", "retry-config",
+      "portal-auth", "weather-loc"
     };
     for (const char* ns : namespaces) {
       Preferences p;

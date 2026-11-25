@@ -123,8 +123,14 @@ void worker(void*) {
       strlcpy(lastCity, city, sizeof(lastCity));
       attempted = false;
       portENTER_CRITICAL(&weatherMux);
-      shared.valid = false;
-      strlcpy(shared.status, configured ? "New location" : "Set city in portal", sizeof(shared.status));
+      // Do not discard a just-synced portal forecast for the same city.
+      const bool keepPortalForecast =
+          configured && shared.valid && strcmp(shared.city, city) == 0;
+      if (!keepPortalForecast) {
+        shared.valid = false;
+        strlcpy(shared.status, configured ? "New location" : "Set city in portal",
+                sizeof(shared.status));
+      }
       strlcpy(shared.city, city, sizeof(shared.city));
       portEXIT_CRITICAL(&weatherMux);
     }
@@ -157,7 +163,7 @@ void worker(void*) {
         shared.updatedAtMs = millis();
         strlcpy(shared.city, city, sizeof(shared.city));
         portEXIT_CRITICAL(&weatherMux);
-        Serial.printf("[Weather] %s %.1f C code=%d\\n", city, temp, code);
+        Serial.printf("[Weather] %s %.1f C code=%d\n", city, temp, code);
       }
     }
     vTaskDelay(pdMS_TO_TICKS(LOCATION_CHECK_MS));

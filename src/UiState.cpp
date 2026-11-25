@@ -47,7 +47,14 @@ void uiPop() {
   g_menuIndex = 0;
   g_scrollOffset = 0;
 }
-void uiGoRoot() { g_depth = 1; g_menuIndex = 0; g_scrollOffset = 0; }
+void uiGoRoot() {
+  g_depth = 1;
+  g_menuIndex = 0;
+  g_scrollOffset = 0;
+  g_pendingRot = 0;
+  g_pendingPress = false;
+  g_pendingLong = false;
+}
 int uiScrollOffset() { return g_scrollOffset; }
 void uiScrollBy(int direction, int maxOffset) {
   if (maxOffset < 0) maxOffset = 0;

@@ -6,6 +6,7 @@
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include <math.h>
+#include <string.h>
 
 namespace {
 portMUX_TYPE weatherMux = portMUX_INITIALIZER_UNLOCKED;

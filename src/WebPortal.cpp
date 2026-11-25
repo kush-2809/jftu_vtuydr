@@ -38,7 +38,7 @@ void handleRoot() {
 }
 
 void handleStatus() {
-  if (!portalAuthCheck(server)) return;
+  // Monitoring is public on the local portal; mutating routes remain admin-only.
   String json = "{";
   json += "\"levelValid\":" + String(waterLevelValid ? "true" : "false");
   json += ",\"level\":" + String(waterLevelPercent, 1);
@@ -311,7 +311,7 @@ bool parseClock(const String& value, uint8_t& h, uint8_t& m) {
   h = hh; m = mm; return true;
 }
 void handleDisplayGet() {
-  if (!portalAuthCheck(server)) return;
+  // Read-only settings are visible without admin login.
   const SleepWindow& sw = sleepWindow();
   char start[6], end[6];
   snprintf(start, sizeof(start), "%02u:%02u", sw.startHour, sw.startMinute);
@@ -370,7 +370,7 @@ void handleDisplaySave() {
   sendMessage(200, "Display settings saved");
 }
 void handleLocationGet() {
-  if (!portalAuthCheck(server)) return;
+  // Read-only settings are visible without admin login.
   Preferences p;
   if (!p.begin("weather-loc", true)) { sendMessage(500, "Preferences unavailable"); return; }
   String city = p.getString("city", "");

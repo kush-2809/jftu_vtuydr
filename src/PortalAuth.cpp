@@ -49,16 +49,33 @@ bool matches(const String& supplied) {
   for (size_t i = 0; i < sizeof(actual); ++i) diff |= actual[i] ^ verifier[i];
   return diff == 0;
 }
-void storeVerifier(const String& password) {
-  randomBytes(salt, sizeof(salt));
-  if (!kdf(password, verifier)) return;
+bool storeVerifier(const String& password) {
+  uint8_t nextSalt[16];
+  uint8_t nextHash[32];
+  // Derive into temporary buffers. Never replace the working credentials
+  // unless the new verifier was stored successfully.
+  randomBytes(nextSalt, sizeof(nextSalt));
+  uint8_t previousSalt[16];
+  memcpy(previousSalt, salt, sizeof(salt));
+  memcpy(salt, nextSalt, sizeof(salt));
+  const bool derived = kdf(password, nextHash);
+  memcpy(salt, previousSalt, sizeof(salt));
+  if (!derived) return false;
+
   Preferences prefs;
-  if (!prefs.begin("portal-auth", false)) return;
-  prefs.putBytes("salt", salt, sizeof(salt));
-  prefs.putBytes("hash", verifier, sizeof(verifier));
-  prefs.putBool("set", true);
+  if (!prefs.begin("portal-auth", false)) return false;
+  bool saved =
+      prefs.putBytes("salt", nextSalt, sizeof(nextSalt)) == sizeof(nextSalt) &&
+      prefs.putBytes("hash", nextHash, sizeof(nextHash)) == sizeof(nextHash);
+  if (saved) saved = prefs.putBool("set", true) == sizeof(bool);
   prefs.end();
-  configured = true;
+
+  if (saved) {
+    memcpy(salt, nextSalt, sizeof(salt));
+    memcpy(verifier, nextHash, sizeof(verifier));
+    configured = true;
+  }
+  return saved;
 }
 bool sessionMatches(WebServer& server) {
   if (!sessionToken.length()) return false;
@@ -129,7 +146,7 @@ bool portalAuthLogin(const String& password, String& session) {
 bool portalAuthChange(const String& previous, const String& next) {
   if (next.length() < 10 || next.length() > 64 || next == "Admin123@" ||
       !matches(previous)) return false;
-  storeVerifier(next);
+  if (!storeVerifier(next)) return false;
   Preferences p;
   if (p.begin("portal-auth", false)) { p.putBool("changed", true); p.end(); }
   return true;

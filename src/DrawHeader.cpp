@@ -64,36 +64,46 @@ static uint16_t headerStateColor() {
   return t.muted;
 }
 
+void drawDisconnected(int cx, int cy) {
+  const Theme& t = themeGet();
+  canvas.drawCircle(cx, cy, 9, t.err);
+  canvas.drawLine(cx - 5, cy - 5, cx + 5, cy + 5, t.err);
+  canvas.drawLine(cx + 5, cy - 5, cx - 5, cy + 5, t.err);
+}
+
+// Reserved 40px status bar. No dashboard card may draw above y=45.
 void drawHeader() {
   const Theme& t = themeGet();
-  canvas.fillRect(0, 0, W, 36, t.headerBg);
-
+  canvas.fillRect(0, 0, W, 40, t.headerBg);
   canvas.setTextSize(2);
-  canvas.setTextColor(t.accent, t.headerBg);
-  canvas.setCursor(7, 10);
-  canvas.print("SMART TANK");
+  canvas.setTextColor(t.fg, t.headerBg);
+  canvas.setCursor(8, 11);
+  canvas.print("SmartTank");
 
-  // drawClockInHeader();
+  // A disconnected LoRa receiver is explicitly crossed out, never bars.
+  canvas.setTextSize(1);
+  canvas.setTextColor(t.muted, t.headerBg);
+  canvas.setCursor(W - 96, 13);
+  canvas.print("L");
+  if (loraInitialized && remoteConnected) {
+    const int level = getSignalLevel(lastRSSI);
+    drawSignalBars(W - 83, 11, level, getSignalColor(level));
+  } else {
+    drawDisconnected(W - 74, 19);
+  }
 
-// Fixed horizontal alignment for both signal indicators.
-const int loraLevel = remoteConnected ? getSignalLevel(lastRSSI) : 0;
-
-drawSignalBars(
-    W - 72,
-    8,
-    loraLevel,
-    remoteConnected ? getSignalColor(loraLevel) : t.muted
-);
-
-// Wi-Fi stays inside the right margin.
-if (wifiManagerIsConnected()) {
-  drawWifiIcon(
-      W - 21,
-      17,
-      getSignalLevel(wifiManagerGetRSSI())
-  );
-}
-  canvas.fillRect(0, 36, W, 2, headerStateColor());
+  canvas.setCursor(W - 44, 13);
+  canvas.print("W");
+  if (wifiManagerIsConnected()) {
+    drawWifiIcon(W - 20, 19, getSignalLevel(wifiManagerGetRSSI()));
+  } else if (wifiManagerIsAPActive()) {
+    canvas.setTextColor(t.warn, t.headerBg);
+    canvas.setCursor(W - 30, 17);
+    canvas.print("AP");
+  } else {
+    drawDisconnected(W - 20, 19);
+  }
+  canvas.drawFastHLine(0, 39, W, headerStateColor());
 }
 
 void drawTankGraphic() {

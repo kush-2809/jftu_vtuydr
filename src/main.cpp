@@ -89,7 +89,7 @@ void setup() {
   {
     Preferences p;
     p.begin("ui", true);
-    uint8_t t = p.getUChar("theme", 0);
+    uint8_t t = p.getUChar("theme", 4); // Fresh installs: Aqua daylight look; existing preferences win.
     p.end();
     if (t < themeCount()) themeLoad(t);
   }

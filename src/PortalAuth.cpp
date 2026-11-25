@@ -151,6 +151,14 @@ bool portalAuthChange(const String& previous, const String& next) {
   if (p.begin("portal-auth", false)) { p.putBool("changed", true); p.end(); }
   return true;
 }
+bool portalAuthLocalAdminOpen() {
+  if (!configured || portalAuthMustChange() || !sessionToken.length()) return false;
+  if ((unsigned long)(millis() - lastSessionAt) >= SESSION_TTL_MS) {
+    sessionToken = "";
+    return false;
+  }
+  return true;
+}
 bool portalAuthIsAuthenticated(WebServer& server) { return sessionMatches(server); }
 bool portalAuthSessionValid(WebServer& server) {
   if (sessionMatches(server)) return true;

@@ -5,6 +5,7 @@ class WebServer;
 // Server-side credentials, session and forced first-login change.
 void portalAuthBegin();
 bool portalAuthCheck(WebServer& server);
+bool portalAuthSessionValid(WebServer& server);
 bool portalAuthReady();
 bool portalAuthMustChange();
 bool portalAuthLogin(const String& password, String& session);

@@ -19,6 +19,8 @@
 #include "Buzzer.h"
 #include "Scheduler.h"
 #include "TimeService.h"
+#include "Telemetry.h"
+#include "DashboardLayout.h"
 #include <Preferences.h>
 
 namespace {
@@ -72,6 +74,30 @@ void handleStatus() {
   else if (autoPumpState == AUTO_WAIT_SENSOR) state = "WAIT SENSOR";
   json += ",\"autoState\":\"" + String(state) + "\"}";
   server.send(200, "application/json", json);
+}
+
+
+void handleTelemetry() {
+  // Read-only: system telemetry never requires administrator credentials.
+  String j = "{";
+  const int8_t cpu = telemetryCpuPercent();
+  const float temp = telemetryChipTempC();
+  j += "\"cpuPercent\":" + (cpu < 0 ? String("null") : String(cpu));
+  j += ",\"cpuMHz\":" + String(telemetryCpuFrequencyMHz());
+  j += ",\"chipTempC\":" + (isfinite(temp) ? String(temp, 1) : String("null"));
+  j += ",\"heapFreeKb\":" + String(telemetryHeapFreeKb());
+  j += ",\"heapUsedKb\":" + String(telemetryHeapUsedKb());
+  j += ",\"psramFreeKb\":" + String(telemetryPsramFreeKb());
+  j += ",\"psramTotalKb\":" + String(telemetryPsramTotalKb());
+  j += ",\"uptimeSeconds\":" + String(telemetryUptimeSeconds());
+  j += ",\"rssi\":" + (remoteConnected ? String(lastRSSI) : String("null"));
+  j += ",\"wifiRssi\":" + (WiFi.status() == WL_CONNECTED ?
+        String(WiFi.RSSI()) : String("null"));
+  j += ",\"distanceCm\":" + (remoteConnected && sensorReadingValid ?
+        String(distanceCm, 1) : String("null"));
+  j += ",\"acVoltage\":null,\"acCurrent\":null,\"espVoltage\":null,\"espCurrent\":null";
+  j += "}";
+  server.send(200, "application/json", j);
 }
 
 void handlePumpStart() {
@@ -318,6 +344,7 @@ void handleDisplayGet() {
   snprintf(end, sizeof(end), "%02u:%02u", sw.endHour, sw.endMinute);
   String j = "{\"rotation\":" + String(displayRotation());
   j += ",\"theme\":" + String(themeIndex());
+  j += ",\"layout\":" + String(dashboardLayoutIndex());
   j += ",\"timeout\":" + String(displayGetTimeoutSeconds());
   j += ",\"dim\":" + String(displayGetDimStep());
   j += ",\"brightness\":" + String(displayBrightnessPercent());
@@ -330,18 +357,19 @@ void handleDisplayGet() {
 void handleDisplaySave() {
   if (!portalAuthCheck(server)) return;
   const char* required[] = {
-      "rotation","theme","timeout","dim","brightness","buzzer",
+      "rotation","theme","layout","timeout","dim","brightness","buzzer",
       "sleepStart","sleepEnd","sleepEnabled"};
   for (const char* key : required)
     if (!server.hasArg(key)) { sendMessage(400, String("Missing ") + key); return; }
   int rotation = server.arg("rotation").toInt();
   int theme = server.arg("theme").toInt();
+  int layout = server.arg("layout").toInt();
   int timeout = server.arg("timeout").toInt();
   int dim = server.arg("dim").toInt();
   int brightness = server.arg("brightness").toInt();
   int buzz = server.arg("buzzer").toInt();
   uint8_t sh, sm, eh, em;
-  if (rotation < 0 || rotation > 3 || theme < 0 || theme >= themeCount()
+  if (rotation < 0 || rotation > 3 || theme < 0 || theme >= themeCount() || layout < 0 || layout >= dashboardLayoutCount()
       || timeout < 0 || timeout > 600 || (dim != 10 && dim != 15 && dim != 20)
       || brightness < 40 || brightness > 100 || brightness % 10 != 0
       || buzz < 0 || buzz > 3
@@ -353,6 +381,7 @@ void handleDisplaySave() {
     sendMessage(500, "Unable to resize display sprite; no settings changed"); return;
   }
   themeSet(theme);
+  dashboardLayoutSet(layout);
   displaySetTimeoutSeconds(timeout);
   displaySetDimStep(dim);
   // Do not force the backlight ON during a configured sleep window.
@@ -449,6 +478,7 @@ void webPortalConfigure() {
   server.on("/api/location", HTTP_GET, handleLocationGet);
   server.on("/api/location", HTTP_POST, handleLocationSave);
   server.on("/api/status", HTTP_GET, handleStatus);
+  server.on("/api/telemetry", HTTP_GET, handleTelemetry);
   server.on("/api/pump/start", HTTP_POST, handlePumpStart);
   server.on("/api/pump/stop", HTTP_POST, handlePumpStop);
   server.on("/api/auto", HTTP_POST, handleAutoMode);

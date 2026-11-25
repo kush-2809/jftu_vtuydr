@@ -154,7 +154,7 @@ void handleSettings() {
 }
 
 void handleNetworkConfigGet() {
-  if (!portalAuthCheck(server)) return;
+  // Read-only network configuration: never includes Wi-Fi credentials.
   String json = "{";
 
   json += "\"dhcp\":";

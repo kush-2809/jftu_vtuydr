@@ -125,12 +125,12 @@ async function changePassword(oldp,newp,target){
 $("changeForm").onsubmit=async e=>{
   e.preventDefault();
   if($("newPass").value!==$("confirmPass").value){$("changeMsg").textContent="Passwords do not match";return;}
-  try{await changePassword($("oldPass").value,$("newPass").value,$("changeMsg");
+  try{await changePassword($("oldPass").value,$("newPass").value,$("changeMsg"));
     $("changeForm").reset();showAuth("app");await Promise.allSettled([loadDisplay(),loadNetwork(),loadLocation()]);refresh();weather();
   }catch(err){$("changeMsg").textContent=err.message;}
 };
 $("securityForm").onsubmit=async e=>{
-  e.preventDefault();try{await changePassword($("securityOld").value,$("securityNew").value,$("securityMsg");$("securityForm").reset();}
+  e.preventDefault();try{await changePassword($("securityOld").value,$("securityNew").value,$("securityMsg"));$("securityForm").reset();}
   catch(err){$("securityMsg").textContent=err.message;}
 };
 $("logout").onclick=async()=>{await request("/api/admin/logout","POST").catch(()=>{});showAuth("login");};

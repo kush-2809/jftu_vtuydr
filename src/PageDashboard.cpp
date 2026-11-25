@@ -52,31 +52,22 @@ uint16_t stateColor(const Theme& t) {
   if (autoPumpState == AUTO_FILLING || manualPumpState) return t.ok;
   return t.accent;
 }
-void retryLine(int x, int y, const Theme& t, bool compact) {
+void retryLine(int x, int y, const Theme& t) {
   const uint32_t secs = pumpRetryRemainingSeconds();
+  char line[48];
   if (pumpRetryManualTimeEnabled()) {
-    char line[50];
-    snprintf(line, sizeof(line), compact ? "AT %02u:%02u  %02lu:%02lu LEFT" :
-        "SET %02u:%02u  IN %02lu:%02lu:%02lu",
+    snprintf(line, sizeof(line), "AT %02u:%02u  IN %02lu:%02lu:%02lu",
         pumpRetryManualHour(), pumpRetryManualMinute(),
-        (unsigned long)(compact ? secs / 60 : secs / 3600),
-        (unsigned long)(compact ? secs % 60 : (secs / 60) % 60),
-        (unsigned long)(compact ? 0 : secs % 60));
-    // Compact layout has only two time fields and uses a separate format.
-    if (compact) {
-      snprintf(line, sizeof(line), "SET %02u:%02u  %02lu:%02lu LEFT",
-          pumpRetryManualHour(), pumpRetryManualMinute(),
-          (unsigned long)(secs / 60), (unsigned long)(secs % 60));
-    }
-    small(x, y, line, t.fg, t.err);
+        (unsigned long)(secs / 3600),
+        (unsigned long)((secs / 60) % 60),
+        (unsigned long)(secs % 60));
   } else {
-    char line[32];
     snprintf(line, sizeof(line), "AUTO RETRY %02lu:%02lu:%02lu",
         (unsigned long)(secs / 3600),
         (unsigned long)((secs / 60) % 60),
         (unsigned long)(secs % 60));
-    small(x, y, line, t.fg, t.err);
   }
+  small(x, y, line, TFT_WHITE, t.err);
 }
 void footer(const Theme& t) {
   canvas.fillRect(0, H - 20, W, 20, t.footerBg);
@@ -102,12 +93,11 @@ void drawDashboard() {
     // Portrait: time, weather, level, and pump safety are always visible.
     card(8, 42, W - 16, 48, t);
     label(18, 49, "LOCAL TIME", t);
-    small(18, 64, timeFormatHHMM(), t.accent, t.panel);
+    small(18, 64, timeNtpSynced() ? "NTP SYNCED" : "CLOCK", t.muted, t.panel);
     canvas.setTextSize(2);
     canvas.setTextColor(t.fg, t.panel);
     canvas.setCursor(88, 59);
     canvas.print(timeFormatHHMM());
-    small(166, 66, timeNtpSynced() ? "NTP" : "CLOCK", t.ok, t.panel);
     small(18, 78, dateFormatDMY(), t.muted, t.panel);
 
     card(8, 96, W - 16, 46, t);
@@ -158,7 +148,7 @@ void drawDashboard() {
     canvas.print(warning ? "NO WATER RISE DETECTED" : pumpState());
     canvas.setTextColor(warning ? TFT_WHITE : t.muted, pumpBg);
     canvas.setCursor(18, 278);
-    if (warning) retryLine(18, 278, t, false);
+    if (warning) retryLine(18, 278, t);
     else canvas.print(remoteConnected && sensorReadingValid ? "SENSOR ONLINE" : "SENSOR OFFLINE");
 
   } else {

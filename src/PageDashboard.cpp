@@ -4,6 +4,7 @@
 #include "Management.h"
 #include "TimeService.h"
 #include "WeatherService.h"
+#include "DashboardLayout.h"
 
 // Compact feature-phone-style instrument panel for 240x320 / 320x240 ST7789.
 // Water tank is deliberately the visual hero in both orientations.
@@ -90,7 +91,108 @@ void bottom(const Theme& t) {
 }
 }
 
+
+void drawAquaDashboard() {
+  if (W <= 0 || H <= 0) return;
+  const Theme& t = themeGet();
+  const bool wide = W > H, warning = pumpRetryWarningActive();
+  const WeatherSnapshot weather = weatherServiceSnapshot();
+  canvas.fillSprite(t.bg);
+  drawHeader();
+
+  // Aqua is a distinct two-column feature-phone dashboard, not another theme.
+  const int left = 8, gap = 7, usable = W - 16;
+  const int leftW = wide ? 142 : 112;
+  const int rightX = left + leftW + gap;
+  const int rightW = usable - leftW - gap;
+
+  const int tankCardTop = wide ? 39 : 43;
+  const int tankCardH = wide ? 142 : 176;
+  panel(left, tankCardTop, leftW, tankCardH, t);
+  printAt(left+8,tankCardTop+8,"WATER LEVEL",1,t.fg,t.panel);
+  printAt(left+8,tankCardTop+20,"LIVE TANK",1,t.muted,t.panel);
+
+  const int vesselW = wide ? 54 : 55;
+  const int vesselH = wide ? 88 : 113;
+  const int tankX = left + (leftW-vesselW)/2 - (wide ? 16 : 0);
+  const int tankY = tankCardTop + (wide ? 38 : 38);
+  tank(tankX,tankY,vesselW,vesselH,t);
+
+  // Water percentage beside tank in landscape; beneath in portrait.
+  if(wide) {
+    char pct[16];
+    snprintf(pct,sizeof(pct),levelOk()?"%.0f%%":"--%%",waterLevelPercent);
+    printAt(left+84,tankCardTop+69,pct,2,levelOk()?t.accent:t.warn,t.panel);
+    printAt(left+83,tankCardTop+95,"LEVEL",1,t.muted,t.panel);
+    printAt(left+83,tankCardTop+110,"LoRa",1,
+        remoteConnected?t.ok:t.err,t.panel);
+  } else {
+    char pct[16];
+    snprintf(pct,sizeof(pct),levelOk()?"%.0f%%":"--%%",waterLevelPercent);
+    printAt(left+32,tankCardTop+154,pct,2,levelOk()?t.accent:t.warn,t.panel);
+  }
+
+  // Right column: separate phone-like pump card and system-health card.
+  const int pumpY=tankCardTop,pumpH=wide?65:81;
+  panel(rightX,pumpY,rightW,pumpH,t);
+  printAt(rightX+8,pumpY+8,"PUMP CONTROL",1,t.fg,t.panel);
+  printAt(rightX+8,pumpY+23,manualPumpState?"ON":"OFF",2,
+          manualPumpState?t.ok:t.muted,t.panel);
+  printAt(rightX+8,pumpY+(wide?47:55),
+    manualOverrideActive?"MANUAL":autoPumpState==AUTO_FILLING?"FILLING":
+      managementAllowsAuto()?"AUTO READY":"STANDBY",
+    1,stateColor(t),t.panel);
+  // Non-interactive indicator only: physical pump controller enforces interlocks.
+  const int ledX=rightX+rightW-16,ledY=pumpY+30;
+  canvas.fillCircle(ledX,ledY,5,manualPumpState?t.ok:t.muted);
+
+  const int systemY=pumpY+pumpH+6;
+  const int systemH=tankCardH-pumpH-6;
+  panel(rightX,systemY,rightW,systemH,t);
+  printAt(rightX+8,systemY+9,"SYSTEM",1,t.fg,t.panel);
+  printAt(rightX+8,systemY+24,remoteConnected?"LoRa ONLINE":"LoRa OFFLINE",1,
+    remoteConnected?t.ok:t.warn,t.panel);
+  printAt(rightX+8,systemY+37,timeFormatHHMM(),1,t.accent,t.panel);
+  if (!wide) printAt(rightX+8,systemY+51,timeNtpSynced()?"NTP SYNCED":"CLOCK",1,t.muted,t.panel);
+
+  const int bottomY=tankCardTop+tankCardH+7;
+  const int bottomH=H-20-bottomY-6;
+  if(bottomH>28) {
+    panel(left,bottomY,W-16,bottomH,t);
+    printAt(left+9,bottomY+8,"WEATHER",1,t.muted,t.panel);
+    const String city=clipped(String(weather.city[0]?weather.city:"SET CITY IN PORTAL"),wide?18:14);
+    printAt(left+9,bottomY+21,city,1,t.fg,t.panel);
+    if(weather.valid) {
+      char tmp[20]; snprintf(tmp,sizeof(tmp),"%.0f C",weather.temperatureC);
+      printAt(wide?left+116:left+144,bottomY+10,tmp,2,t.accent,t.panel);
+      printAt(wide?left+186:left+144,bottomY+31,
+        clipped(String(weatherConditionLabel(weather.weatherCode)),wide?15:13),1,t.muted,t.panel);
+    } else {
+      printAt(wide?left+148:left+144,bottomY+14,"-- C",2,t.warn,t.panel);
+    }
+    if (bottomH>=71) {
+      printAt(left+9,bottomY+44,"WATER",1,t.muted,t.panel);
+      const String volume=levelOk()?
+          String((int)waterVolumeLitres)+" / "+String((int)tankCapacityLitres)+" L":
+          String("WAITING FOR SENSOR");
+      printAt(left+50,bottomY+44,clipped(volume,23),1,t.fg,t.panel);
+    }
+  }
+
+  if(warning) {
+    const int alertY=wide?194:270;
+    const int alertH=wide?25:27;
+    canvas.fillRoundRect(8,alertY,W-16,alertH,7,t.err);
+    printAt(16,alertY+5,"LOW SUPPLY - RETRY",1,TFT_WHITE,t.err);
+    const String remaining=clipped(retryText(true),wide?23:16);
+    printAt(wide?180:126,alertY+5,remaining,1,TFT_WHITE,t.err);
+  }
+  bottom(t);
+  canvas.pushSprite(0,0);
+}
+
 void drawDashboard() {
+  if (dashboardLayoutIndex() == 0) { drawAquaDashboard(); return; }
   if (W <= 0 || H <= 0) return;
   const Theme& t = themeGet();
   const bool landscape = W > H;

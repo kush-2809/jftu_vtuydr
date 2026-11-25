@@ -20,7 +20,6 @@
 #include "Management.h"
 #include "FeatureControl.h"
 #include "WeatherService.h"
-#include "DashboardLayout.h"
 
 // All globals are in StateDefinitions.cpp
 // All pages are in Page*.cpp / UiDrawHelpers.cpp / UiPages.cpp
@@ -38,8 +37,7 @@ void drawCurrentScreen() {
     case Page::MainMenu:           uiMenuDraw("MAIN MENU", 0); return;
     case Page::Alarm:              uiMenuDraw("ALARM", 0); return;
     case Page::Display:            uiMenuDraw("DISPLAY", 0); return;
-    case Page::Layout:             uiMenuDraw("DASHBOARD LAYOUT", 0); return;
-    case Page::ThemeSelect:        uiMenuDraw("COLOR THEME", 0); return;
+    case Page::Layout:             uiMenuDraw("LAYOUT / THEME", 0); return;
     case Page::Network:            uiMenuDraw("NETWORK", 0); return;
     case Page::SystemClean:        uiMenuDraw("SYSTEM CLEAN", 0); return;
     case Page::Management:         uiMenuDraw("MANAGEMENT", 0); return;
@@ -89,7 +87,7 @@ void setup() {
   {
     Preferences p;
     p.begin("ui", true);
-    uint8_t t = p.getUChar("theme", 4); // Fresh installs: Aqua daylight look; existing preferences win.
+    uint8_t t = p.getUChar("theme", 0);
     p.end();
     if (t < themeCount()) themeLoad(t);
   }
@@ -100,7 +98,6 @@ void setup() {
   initializeManualPump();
   buzzerBeep(80, buzzerVolume());
   initializeEncoder();
-  dashboardLayoutInit();
   initializeDisplay();
   initializeLoRa();
   timeServiceInit();

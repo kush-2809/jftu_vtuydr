@@ -79,7 +79,7 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <button type="submit">Find city and save time settings</button><div id="locationMsg" class="message"></div></form><div class="divider"></div><div class="weather"><div class="value" id="weatherTemperature">--°C</div><div><div id="weatherDescription">Weather unavailable</div><div class="muted" id="locationClock">--:--:--</div></div></div><div class="help">Weather needs internet access on the device viewing this webpage. It cannot be fetched via an offline-only setup hotspot. Time-zone offset is saved for the selected location; daylight-saving changes may need re-selection.</div></div></section>
 <section id="security" class="page"><div class="panel"><h2>Administrator security</h2><p class="muted">The password verifier and session state live on the ESP32-S3. No admin password is embedded in HTML or JavaScript.</p>
 <form id="securityForm"><label>Current admin password</label><input id="securityOld" type="password" required autocomplete="current-password"><label>New password</label><input id="securityNew" type="password" minlength="10" maxlength="64" required autocomplete="new-password"><button type="submit">Change administrator password</button><div id="securityMsg" class="message"></div></form><div class="divider"></div><button id="logout" class="alt" type="button">Log out</button></div></section>
-<footer>SmartTank · Local ESP32-S3 portal · Pump safety remains in firmware</footer>
+<footer>SmartTank · Local ESP32-S3 portal · Pump safety remains in firmware · Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" style="color:#73ddca">Open-Meteo</a></footer>
 </div></main>
 <script>
 "use strict";
@@ -150,6 +150,7 @@ async function refresh(){
     $("net").textContent=d.wifiConnected?"Home Wi-Fi connected":d.apActive?"Setup hotspot active":"Wi-Fi offline";
     $("wifiinfo").textContent="IP: "+d.ip+"  ·  Host: "+d.hostname;
     $("clock").textContent=d.clock;
+    $("locationClock").textContent=d.clock;
     $("retryAlert").classList.toggle("hidden",!d.retryWarning);
     if(d.retryWarning){$("retryCountdown").textContent=fmt(d.retrySeconds);
       $("retryLabel").textContent=d.retryManual?"User-scheduled retry at "+String(d.retryHour).padStart(2,"0")+":"+String(d.retryMinute).padStart(2,"0"):"Next automatic retry";}

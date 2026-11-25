@@ -197,10 +197,8 @@ uint8_t pumpRetryManualHour() { return manualRetryHour; }
 uint8_t pumpRetryManualMinute() { return manualRetryMinute; }
 
 bool pumpRetryWarningActive() {
-  // The initial fill plus three unsuccessful retries equals four failed
-  // attempts. The warning then remains latched through automatic retries.
-  return failedAttempts >= 4 && !manualRetryEnabled &&
-         !manualRetryAttemptActive;
+  // Warn after the first failed attempt, including scheduled manual retries.
+  return failedAttempts > 0 && autoPumpState == AUTO_RETRY_WAIT;
 }
 
 uint32_t pumpRetryRemainingSeconds() {

@@ -164,7 +164,9 @@ void handleNetworkConfigGet() {
   json += ",\"gateway\":\"" + wifiManagerGetGateway() + "\"";
   json += ",\"subnet\":\"" + wifiManagerGetSubnet() + "\"";
   json += ",\"dns\":\"" + wifiManagerGetDNS() + "\"";
-  json += ",\"hostname\":\"" + wifiManagerGetHostname() + "\"";
+  String networkHost = wifiManagerGetHostname();
+  if (networkHost.endsWith(".local")) networkHost.remove(networkHost.length() - 6);
+  json += ",\"hostname\":\"" + networkHost + "\"";
   json += ",\"apip\":\"" + wifiManagerGetAPIP() + "\"";
   json += ",\"apsubnet\":\"" + wifiManagerGetAPSubnet() + "\"";
 

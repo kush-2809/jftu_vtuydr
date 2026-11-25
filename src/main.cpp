@@ -113,6 +113,14 @@ void setup() {
 // LOOP
 // ==========================================
 void loop() {
+  // Expired or logged-out portal admin sessions also lock physical config.
+  if (!adminUnlocked() &&
+      (uiPage() == Page::AdminConfig ||
+       uiPage() == Page::AdminTankHeight ||
+       uiPage() == Page::AdminTankCapacity ||
+       uiPage() == Page::AdminThresholds)) {
+    uiGoRoot();
+  }
   updateEncoder();
   handleManualPumpTouch();
 

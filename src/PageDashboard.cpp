@@ -5,46 +5,54 @@
 #include "TimeService.h"
 #include "WeatherService.h"
 
-// Premium compact dashboard for ST7789 240x320 (portrait) and 320x240.
-// Everything is painted into the existing sprite; only push once per frame.
-// Existing encoder, pump controller, LoRa and safety logic remain unchanged.
+// Compact feature-phone-style instrument panel for 240x320 / 320x240 ST7789.
+// Water tank is deliberately the visual hero in both orientations.
 namespace {
-void card(int x, int y, int w, int h, const Theme& t) {
+void printAt(int x, int y, const String& value, uint8_t size, uint16_t fg, uint16_t bg) {
+  canvas.setTextSize(size);
+  canvas.setTextColor(fg, bg);
+  canvas.setCursor(x, y);
+  canvas.print(value);
+}
+String clipped(String s, int length) {
+  if ((int)s.length() > length && length > 2) s = s.substring(0, length - 2) + "..";
+  return s;
+}
+void panel(int x, int y, int w, int h, const Theme& t) {
   canvas.fillRoundRect(x, y, w, h, 9, t.panel);
   canvas.drawRoundRect(x, y, w, h, 9, t.selBg);
 }
-void label(int x, int y, const char* text, const Theme& t) {
-  canvas.setTextSize(1);
-  canvas.setTextColor(t.muted, t.panel);
-  canvas.setCursor(x, y);
-  canvas.print(text);
+bool levelOk() { return remoteConnected && sensorReadingValid && waterLevelValid; }
+
+void tank(int x, int y, int w, int h, const Theme& t) {
+  // Tank lid, vessel outline, gradations and proportional water fill.
+  const int bodyY = y + 8, bodyH = h - 13;
+  canvas.fillRoundRect(x + 6, y + 1, w - 12, 9, 4, t.accent);
+  canvas.fillRoundRect(x, bodyY, w, bodyH, 11, t.tankEmpty);
+  const int inset = 5;
+  const int waterH = levelOk() ? (int)((bodyH - inset * 2) *
+      constrain(waterLevelPercent, 0.0f, 100.0f) / 100.0f) : 0;
+  if (waterH > 0) {
+    const int wy = bodyY + bodyH - inset - waterH;
+    canvas.fillRoundRect(x + inset, wy, w - inset * 2, waterH, 7, t.tankWater);
+    canvas.drawFastHLine(x + inset + 3, wy, w - inset * 2 - 6, t.accent);
+  }
+  canvas.drawRoundRect(x, bodyY, w, bodyH, 11, t.muted);
+  canvas.drawRoundRect(x + 2, bodyY + 2, w - 4, bodyH - 4, 9, t.selBg);
+  for (int i = 1; i <= 3; ++i) {
+    int tickY = bodyY + (bodyH * i) / 4;
+    canvas.drawFastHLine(x + w - 16, tickY, 9, t.muted);
+  }
+  canvas.fillRoundRect(x + w/2 - 11, bodyY + bodyH - 1, 22, 5, 2, t.accent);
 }
-void small(int x, int y, const String& text, uint16_t color, uint16_t bg) {
-  canvas.setTextSize(1);
-  canvas.setTextColor(color, bg);
-  canvas.setCursor(x, y);
-  canvas.print(text);
-}
-String shortCity(const char* city, int maxLength) {
-  String text = city[0] ? String(city) : String("SET CITY IN PORTAL");
-  if (text.length() > (size_t)maxLength) text = text.substring(0, maxLength - 2) + "..";
-  return text;
-}
-void progress(int x, int y, int w, int h, const Theme& t) {
-  canvas.fillRoundRect(x, y, w, h, h / 2, t.tankEmpty);
-  if (!waterLevelValid || !remoteConnected || !sensorReadingValid) return;
-  const float p = constrain(waterLevelPercent, 0.0f, 100.0f);
-  const int fill = (int)(w * p / 100.0f);
-  if (fill > 0) canvas.fillRoundRect(x, y, fill, h, h / 2, t.tankWater);
-}
-const char* pumpState() {
-  if (manualOverrideActive) return "MANUAL OVERRIDE";
+const char* stateText() {
+  if (manualOverrideActive) return "MANUAL RUN";
   if (autoPumpState == AUTO_FILLING)
-    return alarmFillSessionActive() ? "SCHEDULE FILL" : "AUTO FILLING";
-  if (autoPumpState == AUTO_RETRY_WAIT) return "RETRY WAIT";
-  if (autoPumpState == AUTO_WAIT_SENSOR) return "SENSOR WAIT";
-  if (manualPumpState) return "PUMP OUTPUT ON";
-  return managementAllowsAuto() ? "AUTO STANDBY" : "PUMP OFF";
+    return alarmFillSessionActive() ? "SCHEDULE RUN" : "AUTO FILLING";
+  if (autoPumpState == AUTO_RETRY_WAIT) return "RETRY WAITING";
+  if (autoPumpState == AUTO_WAIT_SENSOR) return "WAIT FOR SENSOR";
+  if (manualPumpState) return "PUMP ON";
+  return managementAllowsAuto() ? "AUTO READY" : "PUMP OFF";
 }
 uint16_t stateColor(const Theme& t) {
   if (pumpRetryWarningActive()) return t.err;
@@ -52,162 +60,135 @@ uint16_t stateColor(const Theme& t) {
   if (autoPumpState == AUTO_FILLING || manualPumpState) return t.ok;
   return t.accent;
 }
-void retryLine(int x, int y, const Theme& t) {
+String retryText(bool shortVersion) {
   const uint32_t secs = pumpRetryRemainingSeconds();
-  char line[48];
+  char result[52];
   if (pumpRetryManualTimeEnabled()) {
-    snprintf(line, sizeof(line), "AT %02u:%02u  IN %02lu:%02lu:%02lu",
+    if (shortVersion) {
+      snprintf(result, sizeof(result), "SET %02u:%02u  %02lu:%02lu",
+        pumpRetryManualHour(), pumpRetryManualMinute(),
+        (unsigned long)(secs / 60), (unsigned long)(secs % 60));
+    } else {
+      snprintf(result, sizeof(result), "AT %02u:%02u  IN %02lu:%02lu:%02lu",
         pumpRetryManualHour(), pumpRetryManualMinute(),
         (unsigned long)(secs / 3600),
-        (unsigned long)((secs / 60) % 60),
-        (unsigned long)(secs % 60));
+        (unsigned long)((secs / 60) % 60), (unsigned long)(secs % 60));
+    }
   } else {
-    snprintf(line, sizeof(line), "AUTO RETRY %02lu:%02lu:%02lu",
-        (unsigned long)(secs / 3600),
-        (unsigned long)((secs / 60) % 60),
+    snprintf(result, sizeof(result), shortVersion ? "RETRY %02lu:%02lu" :
+        "AUTO RETRY %02lu:%02lu:%02lu",
+        (unsigned long)(shortVersion ? secs / 60 : secs / 3600),
+        (unsigned long)(shortVersion ? secs % 60 : (secs / 60) % 60),
         (unsigned long)(secs % 60));
   }
-  small(x, y, line, TFT_WHITE, t.err);
+  return String(result);
 }
-void footer(const Theme& t) {
+void bottom(const Theme& t) {
   canvas.fillRect(0, H - 20, W, 20, t.footerBg);
-  canvas.fillRect(0, H - 20, W, 1, t.selBg);
-  canvas.setTextSize(1);
-  canvas.setTextColor(t.fg, t.footerBg);
-  canvas.setCursor(9, H - 13);
-  canvas.print("PRESS: MENU   ROTATE: BRIGHTNESS");
+  canvas.drawFastHLine(0, H - 20, W, t.selBg);
+  printAt(7, H - 13, "CLICK: MENU   TURN: BRIGHTNESS", 1, t.fg, t.footerBg);
 }
-} // namespace
+}
 
 void drawDashboard() {
   if (W <= 0 || H <= 0) return;
   const Theme& t = themeGet();
-  const bool wide = W > H;
+  const bool landscape = W > H;
   const bool warning = pumpRetryWarningActive();
   const WeatherSnapshot weather = weatherServiceSnapshot();
+  const String place = clipped(String(weather.city[0] ? weather.city : "SET CITY"), 12);
+  const String condition = weather.valid ? String(weatherConditionLabel(weather.weatherCode)) :
+      String("OFFLINE");
 
   canvas.fillSprite(t.bg);
-  drawHeader(); // Preserve existing Wi-Fi / LoRa icons and header.
+  drawHeader();  // Keep original working network header.
 
-  if (!wide) {
-    // Portrait: time, weather, level, and pump safety are always visible.
-    card(8, 42, W - 16, 48, t);
-    label(18, 49, "LOCAL TIME", t);
-    small(18, 64, timeNtpSynced() ? "NTP SYNCED" : "CLOCK", t.muted, t.panel);
-    canvas.setTextSize(2);
-    canvas.setTextColor(t.fg, t.panel);
-    canvas.setCursor(88, 59);
-    canvas.print(timeFormatHHMM());
-    small(18, 78, dateFormatDMY(), t.muted, t.panel);
-
-    card(8, 96, W - 16, 46, t);
-    label(18, 103, "LOCAL WEATHER", t);
-    small(18, 116, shortCity(weather.city, 17), t.muted, t.panel);
+  if (!landscape) {
+    // Row 1: clock + weather; large tank occupies primary visual area.
+    panel(7, 37, 226, 43, t);
+    printAt(17, 44, "TIME", 1, t.muted, t.panel);
+    printAt(17, 57, timeFormatHHMM(), 2, t.accent, t.panel);
+    canvas.drawFastVLine(105, 45, 27, t.selBg);
+    printAt(116, 43, place, 1, t.muted, t.panel);
     if (weather.valid) {
-      canvas.setTextSize(2);
-      canvas.setTextColor(t.fg, t.panel);
-      canvas.setCursor(144, 105);
-      canvas.printf("%.0fC", weather.temperatureC);
-      small(144, 127, weatherConditionLabel(weather.weatherCode), t.accent, t.panel);
+      char degree[18];
+      snprintf(degree, sizeof(degree), "%.0f C", weather.temperatureC);
+      printAt(116, 55, degree, 2, t.fg, t.panel);
+      printAt(185, 63, clipped(condition, 7), 1, t.accent, t.panel);
     } else {
-      small(144, 115, "NO DATA", t.warn, t.panel);
+      printAt(116, 58, "WEATHER --", 1, t.warn, t.panel);
     }
 
-    card(8, 148, W - 16, 82, t);
-    label(18, 156, "TANK LEVEL", t);
-    if (remoteConnected && sensorReadingValid && waterLevelValid) {
-      canvas.setTextSize(3);
-      canvas.setTextColor(t.fg, t.panel);
-      canvas.setCursor(16, 170);
-      canvas.printf("%.0f%%", waterLevelPercent);
-      canvas.setTextSize(1);
-      small(18, 200, String((int)waterVolumeLitres) + " / " +
-          String((int)tankCapacityLitres) + " L", t.muted, t.panel);
+    panel(7, 86, 226, 144, t);
+    printAt(16, 94, "SMART TANK  /  LIVE LEVEL", 1, t.muted, t.panel);
+    tank(19, 111, 76, 107, t);
+    printAt(108, 120, "WATER LEVEL", 1, t.muted, t.panel);
+    if (levelOk()) {
+      char pct[16];
+      snprintf(pct, sizeof(pct), "%.0f%%", waterLevelPercent);
+      printAt(105, 139, pct, 3, t.fg, t.panel);
+      char litres[32];
+      snprintf(litres, sizeof(litres), "%.0f / %.0f L",
+          waterVolumeLitres, tankCapacityLitres);
+      printAt(107, 176, litres, 1, t.muted, t.panel);
     } else {
-      canvas.setTextSize(2);
-      small(18, 179, "WAIT SENSOR", t.warn, t.panel);
+      printAt(107, 143, "--%", 3, t.warn, t.panel);
+      printAt(107, 180, "NO SENSOR", 1, t.warn, t.panel);
     }
-    const int tankX = 165, tankY = 156, tankW = 47, tankH = 59;
-    canvas.drawRoundRect(tankX, tankY, tankW, tankH, 8, t.muted);
-    canvas.fillRoundRect(tankX + 4, tankY + 4, tankW - 8, tankH - 8, 5, t.tankEmpty);
-    if (remoteConnected && sensorReadingValid && waterLevelValid) {
-      const int h = (int)((tankH - 8) * constrain(waterLevelPercent, 0.0f, 100.0f) / 100.0f);
-      if (h) canvas.fillRoundRect(tankX + 4, tankY + tankH - 4 - h,
-          tankW - 8, h, 4, t.tankWater);
-    }
-    progress(18, 218, W - 36, 5, t);
+    printAt(107, 200, remoteConnected && sensorReadingValid ?
+        "LoRa CONNECTED" : "LoRa OFFLINE", 1,
+        remoteConnected && sensorReadingValid ? t.ok : t.warn, t.panel);
 
-    const uint16_t pumpBg = warning ? t.err : t.panel;
-    canvas.fillRoundRect(8, 236, W - 16, 61, 9, pumpBg);
-    canvas.setTextSize(1);
-    canvas.setTextColor(warning ? TFT_WHITE : t.muted, pumpBg);
-    canvas.setCursor(18, 244);
-    canvas.print(warning ? "WATER SUPPLY ALERT" : "PUMP CONTROL");
-    canvas.setTextColor(warning ? TFT_WHITE : stateColor(t), pumpBg);
-    canvas.setCursor(18, 260);
-    canvas.print(warning ? "NO WATER RISE DETECTED" : pumpState());
-    canvas.setTextColor(warning ? TFT_WHITE : t.muted, pumpBg);
-    canvas.setCursor(18, 278);
-    if (warning) retryLine(18, 278, t);
-    else canvas.print(remoteConnected && sensorReadingValid ? "SENSOR ONLINE" : "SENSOR OFFLINE");
+    const uint16_t bg = warning ? t.err : t.panel;
+    canvas.fillRoundRect(7, 236, 226, 61, 9, bg);
+    printAt(17, 244, warning ? "WATER SUPPLY WARNING" : "PUMP STATUS",
+        1, warning ? TFT_WHITE : t.muted, bg);
+    printAt(17, 259, warning ? "NO WATER RISE" : stateText(), 2,
+        warning ? TFT_WHITE : stateColor(t), bg);
+    printAt(17, 284, warning ? clipped(retryText(false), 34) :
+        (manualPumpState ? "OUTPUT ACTIVE" : "OUTPUT STANDBY"),
+        1, warning ? TFT_WHITE : t.muted, bg);
 
   } else {
-    // Landscape: two-column instrument cluster, fully within 320x240.
-    card(8, 42, 148, 126, t);
-    label(18, 51, "TANK LEVEL", t);
-    if (remoteConnected && sensorReadingValid && waterLevelValid) {
-      canvas.setTextSize(3);
-      canvas.setTextColor(t.fg, t.panel);
-      canvas.setCursor(18, 70);
-      canvas.printf("%.0f%%", waterLevelPercent);
-      small(18, 104, String((int)waterVolumeLitres) + " / " +
-          String((int)tankCapacityLitres) + " L", t.muted, t.panel);
+    // Landscape: large left tank, right info stack, pump across lower row.
+    panel(7, 35, 152, 153, t);
+    printAt(17, 44, "LIVE WATER LEVEL", 1, t.muted, t.panel);
+    tank(19, 66, 68, 106, t);
+    if (levelOk()) {
+      char pct[16];
+      snprintf(pct, sizeof(pct), "%.0f%%", waterLevelPercent);
+      printAt(92, 82, pct, 2, t.fg, t.panel);
+      char litres[24];
+      snprintf(litres, sizeof(litres), "%.0f L", waterVolumeLitres);
+      printAt(92, 112, litres, 1, t.muted, t.panel);
     } else {
-      small(18, 81, "WAIT SENSOR", t.warn, t.panel);
+      printAt(93, 85, "--%", 2, t.warn, t.panel);
     }
-    progress(18, 124, 128, 8, t);
-    small(18, 143, remoteConnected && sensorReadingValid ? "LoRa ONLINE" :
-        "LoRa OFFLINE", remoteConnected && sensorReadingValid ? t.ok : t.warn, t.panel);
+    printAt(92, 143, remoteConnected ? "LORA OK" : "NO LORA", 1,
+        remoteConnected ? t.ok : t.warn, t.panel);
 
-    card(164, 42, 148, 46, t);
-    label(174, 50, "CURRENT TIME", t);
-    canvas.setTextSize(2);
-    canvas.setTextColor(t.accent, t.panel);
-    canvas.setCursor(174, 64);
-    canvas.print(timeFormatHHMM());
-    small(247, 72, timeNtpSynced() ? "NTP" : "--", t.muted, t.panel);
+    panel(165, 35, 148, 65, t);
+    printAt(175, 44, "LOCAL TIME", 1, t.muted, t.panel);
+    printAt(175, 62, timeFormatHHMM(), 2, t.accent, t.panel);
+    printAt(262, 72, timeNtpSynced() ? "NTP" : "CLOCK", 1, t.muted, t.panel);
 
-    card(164, 94, 148, 50, t);
-    label(174, 101, shortCity(weather.city, 17).c_str(), t);
+    panel(165, 106, 148, 82, t);
+    printAt(175, 115, place, 1, t.muted, t.panel);
     if (weather.valid) {
-      canvas.setTextSize(2);
-      canvas.setTextColor(t.fg, t.panel);
-      canvas.setCursor(174, 115);
-      canvas.printf("%.0fC", weather.temperatureC);
-      small(229, 123, weatherConditionLabel(weather.weatherCode), t.muted, t.panel);
-    } else {
-      small(174, 123, "WEATHER OFFLINE", t.warn, t.panel);
-    }
+      char degree[18];
+      snprintf(degree, sizeof(degree), "%.0f C", weather.temperatureC);
+      printAt(175, 130, degree, 2, t.fg, t.panel);
+      printAt(175, 164, condition, 1, t.accent, t.panel);
+    } else printAt(175, 146, "WEATHER OFFLINE", 1, t.warn, t.panel);
 
-    const uint16_t pumpBg = warning ? t.err : t.panel;
-    canvas.fillRoundRect(164, 150, 148, 43, 9, pumpBg);
-    small(174, 159, warning ? "NO WATER RISE" : pumpState(),
-        warning ? TFT_WHITE : stateColor(t), pumpBg);
-    if (warning) {
-      const uint32_t secs = pumpRetryRemainingSeconds();
-      char remaining[30];
-      snprintf(remaining, sizeof(remaining), "RETRY %02lu:%02lu:%02lu",
-          (unsigned long)(secs / 3600),
-          (unsigned long)((secs / 60) % 60),
-          (unsigned long)(secs % 60));
-      small(174, 177, remaining, TFT_WHITE, pumpBg);
-    } else {
-      small(174, 176, manualPumpState ? "OUTPUT ON" : "OUTPUT OFF", t.muted, pumpBg);
-    }
-
-    small(15, 180, dateFormatDMY(), t.muted, t.bg);
-    small(15, 196, weather.valid ? "WEATHER: UPDATED" : "WEATHER: WAITING", t.muted, t.bg);
+    const uint16_t bg = warning ? t.err : t.panel;
+    canvas.fillRoundRect(7, 194, 306, 25, 7, bg);
+    printAt(15, 201, warning ? "NO WATER RISE" : stateText(), 1,
+        warning ? TFT_WHITE : stateColor(t), bg);
+    if (warning) printAt(118, 201, clipped(retryText(true), 27), 1, TFT_WHITE, bg);
+    else printAt(180, 201, manualPumpState ? "PUMP ON" : "PUMP OFF",
+        1, t.muted, bg);
   }
-  footer(t);
+  bottom(t);
   canvas.pushSprite(0, 0);
 }

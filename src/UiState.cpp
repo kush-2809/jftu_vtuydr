@@ -72,6 +72,7 @@ bool uiInMenu() {
     case Page::Alarm:
     case Page::Display:
     case Page::Layout:
+    case Page::ThemeSelect:
     case Page::Management:
     case Page::Network:
     case Page::SystemClean:

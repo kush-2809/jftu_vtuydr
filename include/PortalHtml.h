@@ -10,12 +10,6 @@ const char SMARTTANK_PORTAL_HTML[] PROGMEM = R"stportal(
 h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17px;margin:0 0 14px}p{line-height:1.55}button,input,select{font:inherit}button{cursor:pointer;background:var(--accent);color:#052324;border:0;border-radius:10px;padding:11px 16px;font-weight:700}button:hover{filter:brightness(1.13)}button:disabled{opacity:.5;cursor:wait}button.alt{background:#2b4459;color:var(--text)}button.danger{background:#a94855;color:#fff}input,select{display:block;width:100%;padding:11px 12px;margin:6px 0 15px;border-radius:10px;border:1px solid #38556b;background:#091727;color:var(--text);min-width:0}input:focus,select:focus{outline:2px solid var(--accent)}label{font-size:13px;color:#c1d3e0}small,.muted{font-size:13px;color:var(--muted)}.panel{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:20px;min-width:0}.top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px}.eyebrow{font-size:11px;font-weight:800;letter-spacing:.17em;color:var(--accent)}.chip{border-radius:99px;border:1px solid #296754;background:#163b37;padding:9px 13px;font-size:12px;color:#8ae7c9}.nav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}.nav button{background:#162b3d;color:#b8d1df;border:1px solid var(--border)}.nav button.active{color:#082323;background:var(--accent)}.page{display:none}.page.active{display:block}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}.grid .span2{grid-column:span 2}.value{font-size:clamp(25px,4vw,36px);font-weight:800;letter-spacing:-.04em;margin:8px 0}.accent{color:var(--accent)}.muted{overflow-wrap:anywhere}.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin:9px 0}.alert{background:#442131;border-color:#a64b5e}.alert strong{color:#ffb6bd}.count{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}.network{width:100%;display:flex;align-items:center;justify-content:space-between;gap:15px;margin:5px 0;background:var(--panel2);color:var(--text);text-align:left}.network small{white-space:nowrap}.hidden,[hidden]{display:none!important}.auth{max-width:460px;margin:8vh auto}.message{min-height:20px;margin:8px 0;color:var(--muted);font-size:13px}.help{padding:12px;background:#1b3444;border-radius:9px;font-size:13px;color:#bfd6e0;margin:8px 0}.divider{height:1px;background:var(--border);margin:19px 0}.weather{display:flex;align-items:center;gap:10px}.weather .value{margin:0}footer{font-size:12px;color:var(--muted);margin-top:20px}
 @media(max-width:880px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:540px){main{padding:10px}.top{align-items:flex-start;padding:16px}.grid{grid-template-columns:minmax(0,1fr)}.grid .span2{grid-column:auto}.row{grid-template-columns:minmax(0,1fr);gap:0}.panel{padding:16px;border-radius:14px}.nav{flex-wrap:nowrap;overflow:auto}.nav button{white-space:nowrap}button{min-height:42px}}
 .auth{position:fixed;z-index:20;top:50%;left:50%;transform:translate(-50%,-50%);width:min(94vw,460px);margin:0;box-shadow:0 0 0 200vmax #020a12cc,0 28px 80px #000a}
-.config-page{display:none}.config-page.active{display:block}
-#telemetry .value{font-size:24px}#telemetryCards{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-@media(max-width:540px){#telemetryCards{grid-template-columns:repeat(2,minmax(0,1fr))}#telemetry .value{font-size:19px}}
-.portalTank{width:74px;height:112px;border:3px solid #87b4cb;border-radius:12px;position:relative;background:#d4e8f3;overflow:hidden;margin:10px auto 3px}
-.portalWater{position:absolute;bottom:0;left:0;width:100%;height:0;background:linear-gradient(#54bcff,#087de7);transition:height .5s}
-.portalTankLine{height:1px;width:100%;position:absolute;left:0;background:#ffffff70;z-index:1}.portalTankTop{top:25%}.portalTankMid{top:55%}
 </style></head><body><main>
 <section id="loginBox" class="panel auth hidden" role="dialog" aria-label="Administrator unlock">
 <div class="eyebrow">SMART HOME · WATER MANAGEMENT</div><h1>SmartTank</h1>
@@ -40,8 +34,11 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <div style="text-align:right"><div class="chip" id="net">Connecting…</div><div class="muted" id="clock" style="margin-top:8px">--:--:--</div></div></header>
 <nav class="nav" aria-label="Sections">
 <button type="button" data-page="overview" class="active">Overview</button>
-<button type="button" data-page="telemetry">Telemetry</button>
-<button type="button" data-page="config">Configuration <span aria-hidden="true">🔒</span></button>
+<button type="button" data-page="display">Display</button>
+<button type="button" data-page="wifi">Wi-Fi</button>
+<button type="button" data-page="network">Network</button>
+<button type="button" data-page="location">Time & Weather</button>
+<button type="button" data-page="security">Security</button>
 </nav>
 <section id="overview" class="page active">
 <div id="retryAlert" class="panel alert hidden" style="margin-bottom:14px">
@@ -50,55 +47,22 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <small>To change the retry time, use System Retry on the TFT display.</small>
 </div>
 <div class="grid">
-<div class="panel"><small>WATER LEVEL</small>
-<div class="portalTank" aria-hidden="true"><div class="portalWater" id="portalWater"></div><div class="portalTankLine portalTankTop"></div><div class="portalTankLine portalTankMid"></div></div>
-<div class="value accent" id="level">--%</div><small id="volume">Waiting for sensor</small></div>
+<div class="panel"><small>WATER LEVEL</small><div class="value accent" id="level">--%</div><small id="volume">Waiting for sensor</small></div>
 <div class="panel"><small>PUMP OUTPUT</small><div class="value" id="pump">--</div><small id="pumpmode">--</small></div>
 <div class="panel"><small>LoRa SENSOR</small><div class="value" id="link">--</div><small id="distance">--</small></div>
 <div class="panel"><small>AUTOMATIC MODE</small><div class="value" id="auto">--</div><small id="thresholds">--</small></div>
-<div id="pumpActionsPanel" class="panel span2"><h2>Pump control</h2><p class="muted">Manual overrides use the controller's existing time limit and safety interlocks.</p><div class="actions"><button id="pumpStart">Start manual / test water</button><button id="pumpStop" class="danger">Stop manual override</button></div><div id="pumpmsg" class="message"></div></div>
-<div id="autoActionsPanel" class="panel span2"><h2>Automatic operation</h2><p class="muted">The existing pump controller remains authoritative.</p><div class="actions"><button id="autoOn">Enable automatic</button><button id="autoOff" class="alt">Disable automatic</button></div></div>
-<div id="tankSettingsPanel" class="panel span2"><h2>Tank & pump settings</h2><form id="tankForm">
+<div class="panel span2"><h2>Pump control</h2><p class="muted">Manual overrides use the controller's existing time limit and safety interlocks.</p><div class="actions"><button id="pumpStart">Start manual / test water</button><button id="pumpStop" class="danger">Stop manual override</button></div><div id="pumpmsg" class="message"></div></div>
+<div class="panel span2"><h2>Automatic operation</h2><p class="muted">The existing pump controller remains authoritative.</p><div class="actions"><button id="autoOn">Enable automatic</button><button id="autoOff" class="alt">Disable automatic</button></div></div>
+<div class="panel span2"><h2>Tank & pump settings</h2><form id="tankForm">
 <div class="row"><div><label>Auto ON threshold (%)</label><input id="on" type="number" step=".5" min="0" max="99" required></div><div><label>Auto OFF threshold (%)</label><input id="off" type="number" step=".5" min="1" max="100" required></div>
 <div><label>Manual override (minutes)</label><input id="mins" type="number" min="1" max="120" required></div><div><label>Tank height (cm)</label><input id="height" type="number" min="20" max="500" step=".5" required></div></div><label>Tank capacity (litres)</label><input id="capacity" type="number" min="1" max="100000" required>
 <button type="submit">Save tank settings</button><div id="settingsmsg" class="message"></div></form></div>
 <div class="panel span2"><h2>Time & weather</h2><div class="weather"><div class="value" id="temperature">--°C</div><div><div id="weatherText">Weather unavailable</div><small id="weatherPlace">Choose a city in Time & Weather</small></div></div><div class="divider"></div><small>Forecast requires internet. Device clock uses NTP when connected.</small></div>
 </div></section>
-<section id="telemetry" class="page">
-<div class="panel"><h2>ESP32-S3 live telemetry</h2><p class="muted">Real controller measurements, refreshed while this tab is open. Unavailable metrics are explicitly marked.</p>
-<div class="grid" id="telemetryCards">
-<div class="panel"><small>CHIP TEMPERATURE</small><div class="value" id="tTemp">--</div></div>
-<div class="panel"><small>CPU FREQUENCY</small><div class="value" id="tClock">--</div></div>
-<div class="panel"><small>CPU USAGE</small><div class="value" id="tCpu">--</div></div>
-<div class="panel"><small>UPTIME</small><div class="value" id="tUptime">--</div></div>
-<div class="panel"><small>HEAP FREE</small><div class="value" id="tHeapFree">--</div></div>
-<div class="panel"><small>HEAP USED</small><div class="value" id="tHeapUsed">--</div></div>
-<div class="panel"><small>PSRAM FREE / TOTAL</small><div class="value" id="tPsram">--</div></div>
-<div class="panel"><small>LoRa RSSI</small><div class="value" id="tLora">--</div></div>
-<div class="panel"><small>Wi-Fi RSSI</small><div class="value" id="tWiFi">--</div></div>
-<div class="panel"><small>Sensor distance</small><div class="value" id="tDistance">--</div></div>
-<div class="panel span2"><small>ELECTRICAL SENSORS</small><div class="muted" id="tElectrical">AC and ESP current/voltage measurement hardware not installed</div></div>
-</div><div id="telemetryMsg" class="message"></div></div>
-</section>
-<section id="config" class="page">
-<div class="panel" style="margin-bottom:12px"><div class="eyebrow">ADMINISTRATOR AREA</div><h2>Configuration</h2><p class="muted">Tank, pump, display, network, location and security settings are protected by your ESP32-S3 administrator password.</p>
-<nav class="nav configNav" aria-label="Configuration areas">
-<button type="button" class="active" data-config="pumpConfig">Tank & Pump</button>
-<button type="button" data-config="display">Display & Layout</button>
-<button type="button" data-config="wifi">Wi-Fi</button>
-<button type="button" data-config="network">Network</button>
-<button type="button" data-config="location">Time & Weather</button>
-<button type="button" data-config="security">Security</button>
-</nav></div>
-<section id="pumpConfig" class="config-page active"><div class="grid" id="configActions"></div></section>
-<section id="display" class="config-page"><div class="panel"><h2>TFT display management</h2><div class="message" id="displaySync">Reading settings from SmartTank...</div><p class="muted">Changes save directly to ESP32; rotation, brightness, timeout, theme, and sleep window are independent of portal appearance.</p><form id="displayForm">
+<section id="display" class="page"><div class="panel"><h2>TFT display management</h2><div class="message" id="displaySync">Reading settings from SmartTank...</div><p class="muted">Changes save directly to ESP32; rotation, brightness, timeout, theme, and sleep window are independent of portal appearance.</p><form id="displayForm">
 <div class="row">
 <div><label>Screen orientation</label><select id="rotation"><option value="0">Portrait · 0°</option><option value="1">Landscape · 90°</option><option value="2">Portrait · 180°</option><option value="3">Landscape · 270°</option></select></div>
 <div><label>Theme · Dark/Light</label><select id="theme"><option value="0">Midnight (Dark)</option><option value="1">Slate</option><option value="2">Amber</option><option value="3">Terminal</option><option value="4">Daylight (Light)</option></select></div>
-<div><label>Dashboard layout</label><select id="layout">
-<option value="0">Aqua Phone · large tank + controls</option>
-<option value="1">Compact · instrument cards</option>
-</select></div>
 <div><label>Idle timeout (seconds, 0 = off)</label><input id="timeout" type="number" min="0" max="600" required></div>
 <div><label>Dim step (%)</label><select id="dim"><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option></select></div>
 <div><label>Brightness (%)</label><input id="brightness" type="number" min="40" max="100" step="10" required></div>
@@ -107,16 +71,15 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <div><label>Sleep window end (HH:MM)</label><input id="sleepEnd" type="time" required></div>
 </div><label><input id="sleepEnabled" type="checkbox" style="width:auto;display:inline;margin:10px"> Enable sleep window</label><br>
 <div class="actions"><button type="button" id="setDark" class="alt">Dark display</button><button type="button" id="setLight" class="alt">Light display</button></div><button type="submit">Save display settings</button><div id="displayMsg" class="message"></div></form></div></section>
-<section id="wifi" class="config-page"><div class="panel"><h2>Wi-Fi connection</h2><p class="muted" id="wifiinfo">Network details loading...</p><div class="actions"><button id="scanBtn" type="button" class="alt">Scan nearby networks</button></div><div id="scanMsg" class="message">Scan to see networks detected by the ESP32-S3 (2.4 GHz).</div><div id="wifiNetworks"></div><div class="divider"></div>
+<section id="wifi" class="page"><div class="panel"><h2>Wi-Fi connection</h2><p class="muted" id="wifiinfo">Network details loading...</p><div class="actions"><button id="scanBtn" type="button" class="alt">Scan nearby networks</button></div><div id="scanMsg" class="message">Scan to see networks detected by the ESP32-S3 (2.4 GHz).</div><div id="wifiNetworks"></div><div class="divider"></div>
 <form id="wifiForm"><label>Wi-Fi name (SSID)</label><input id="wifiSSID" maxlength="32" placeholder="Select a network or enter manually" required><label>Wi-Fi password</label><input id="wifiPassword" type="password" maxlength="63" autocomplete="new-password" placeholder="Enter network password">
 <button type="submit">Save Wi-Fi and connect</button><div id="wifiMsg" class="message"></div></form><div class="help">Setup access point remains a recovery path while switching networks. This dashboard may reconnect at a new IP.</div></div></section>
-<section id="network" class="config-page"><div class="panel"><h2>IP and hostname</h2><p class="muted">DHCP recommended. Changes apply after restarting SmartTank.</p><form id="networkForm"><label>IP assignment</label><select id="netdhcp"><option value="1">Automatic · DHCP</option><option value="0">Static IP</option></select><div id="staticFields" class="row"><div><label>Static IP</label><input id="netip" required></div><div><label>Gateway</label><input id="netgateway" required></div><div><label>Subnet mask</label><input id="netsubnet" required></div><div><label>DNS</label><input id="netdns" required></div></div><label>Hostname (without .local)</label><input id="nethost" maxlength="24" required><div class="row"><div><label>Setup AP IP</label><input id="netapip" required></div><div><label>Setup AP subnet</label><input id="netapsubnet" required></div></div><button type="submit">Save network configuration</button><div id="networkmsg" class="message"></div></form></div></section>
-<section id="location" class="config-page"><div class="panel"><h2>Local time and weather</h2><p class="muted">Choose your city and country. The location is saved on the ESP32; an online weather service supplies conditions, while NTP synchronizes the clock.</p>
+<section id="network" class="page"><div class="panel"><h2>IP and hostname</h2><p class="muted">DHCP recommended. Changes apply after restarting SmartTank.</p><form id="networkForm"><label>IP assignment</label><select id="netdhcp"><option value="1">Automatic · DHCP</option><option value="0">Static IP</option></select><div id="staticFields" class="row"><div><label>Static IP</label><input id="netip" required></div><div><label>Gateway</label><input id="netgateway" required></div><div><label>Subnet mask</label><input id="netsubnet" required></div><div><label>DNS</label><input id="netdns" required></div></div><label>Hostname (without .local)</label><input id="nethost" maxlength="24" required><div class="row"><div><label>Setup AP IP</label><input id="netapip" required></div><div><label>Setup AP subnet</label><input id="netapsubnet" required></div></div><button type="submit">Save network configuration</button><div id="networkmsg" class="message"></div></form></div></section>
+<section id="location" class="page"><div class="panel"><h2>Local time and weather</h2><p class="muted">Choose your city and country. The location is saved on the ESP32; an online weather service supplies conditions, while NTP synchronizes the clock.</p>
 <form id="locationForm"><div class="row"><div><label>City</label><input id="city" maxlength="64" required placeholder="Lucknow"></div><div><label>Country</label><input id="country" maxlength="64" required placeholder="India"></div></div><label>NTP server</label><input id="ntp" maxlength="100" value="pool.ntp.org" required>
 <button type="submit">Find city and save time settings</button><div id="locationMsg" class="message"></div></form><div class="divider"></div><div class="weather"><div class="value" id="weatherTemperature">--°C</div><div><div id="weatherDescription">Weather unavailable</div><div class="muted" id="locationClock">--:--:--</div></div></div><div class="help">Weather needs internet access on the device viewing this webpage. It cannot be fetched via an offline-only setup hotspot. Time-zone offset is saved for the selected location; daylight-saving changes may need re-selection.</div></div></section>
-<section id="security" class="config-page"><div class="panel"><h2>Administrator security</h2><p class="muted">The password verifier and session state live on the ESP32-S3. No admin password is embedded in HTML or JavaScript.</p>
+<section id="security" class="page"><div class="panel"><h2>Administrator security</h2><p class="muted">The password verifier and session state live on the ESP32-S3. No admin password is embedded in HTML or JavaScript.</p>
 <form id="securityForm"><label>Current admin password</label><input id="securityOld" type="password" required autocomplete="current-password"><label>New password</label><input id="securityNew" type="password" minlength="10" maxlength="64" required autocomplete="new-password"><button type="submit">Change administrator password</button><div id="securityMsg" class="message"></div></form><div class="divider"></div><button id="logout" class="alt" type="button">Log out</button></div></section>
-</section>
 <footer>SmartTank · Local ESP32-S3 portal · Pump safety remains in firmware · Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" style="color:#73ddca">Open-Meteo</a></footer>
 </div></main>
 <script>
@@ -132,26 +95,16 @@ async function request(url,method,body){
   try{return JSON.parse(txt);}catch{return txt;}
 }
 function switchPage(id){
-  if(id==="config"&&!adminActive){
-    pendingPage="config";showAuth("login");return;
+  if(id!=="overview"&&!adminActive){
+    pendingPage=id;showAuth("login");return;
   }
-  document.querySelectorAll("#app > .page").forEach(el=>el.classList.toggle("active",el.id===id));
+  document.querySelectorAll(".page").forEach(el=>el.classList.toggle("active",el.id===id));
   document.querySelectorAll("[data-page]").forEach(el=>el.classList.toggle("active",el.dataset.page===id));
-  if(id==="config")switchConfig("pumpConfig");
-  if(id==="telemetry")loadTelemetry();
-}
-function switchConfig(id){
-  document.querySelectorAll(".config-page").forEach(el=>el.classList.toggle("active",el.id===id));
-  document.querySelectorAll("[data-config]").forEach(el=>el.classList.toggle("active",el.dataset.config===id));
   if(id==="display")loadDisplay(true);
   if(id==="network")loadNetwork().catch(()=>{});
   if(id==="location")loadLocation().catch(()=>{});
 }
 document.querySelectorAll("[data-page]").forEach(el=>el.onclick=()=>switchPage(el.dataset.page));
-document.querySelectorAll("[data-config]").forEach(el=>el.onclick=()=>switchConfig(el.dataset.config));
-for(const id of ["pumpActionsPanel","autoActionsPanel","tankSettingsPanel"]){
-  $("configActions").appendChild($(id));
-}
 function showAuth(mode){
   $("loginBox").classList.toggle("hidden",mode!=="login");
   $("changeBox").classList.toggle("hidden",mode!=="change");
@@ -159,7 +112,7 @@ function showAuth(mode){
 }
 function adminRequired(){
   if(adminActive)return false;
-  pendingPage="config";
+  pendingPage="overview";
   showAuth("login");
   return true;
 }
@@ -169,7 +122,7 @@ async function authStatus(){
   try{
     const d=await request("/api/admin/status");
     adminActive=Boolean(d.authenticated&&!d.mustChange);
-    // Never prompt for admin until Configuration is explicitly opened.
+    if(d.authenticated&&d.mustChange)showAuth("change");
   }catch{adminActive=false;}
   await Promise.allSettled([loadDisplay(true),loadLocation()]);
   refresh();weather();
@@ -207,7 +160,6 @@ async function refresh(){
   try{
     const d=await request("/api/status");$("level").textContent=d.levelValid?d.level.toFixed(1)+"%":"--%";
     $("volume").textContent=d.levelValid?d.volume.toFixed(0)+" / "+d.capacity.toFixed(0)+" L":"Level unavailable";
-    $("portalWater").style.height=(d.levelValid?Math.max(0,Math.min(100,d.level)):0)+"%";
     $("pump").textContent=d.pumpOn?"ON":"OFF";$("pumpmode").textContent=d.override?"Manual override":d.autoState;
     $("link").textContent=d.sensorConnected?"ONLINE":"OFFLINE";
     $("distance").textContent=d.sensorValid?"Distance: "+d.distance.toFixed(1)+" cm":"Sensor data unavailable";
@@ -224,26 +176,6 @@ async function refresh(){
       if(document.activeElement!==$(id))$(id).value=val;
     }
   }catch(err){$("net").textContent="Connection lost";}
-}
-async function loadTelemetry(){
-  if(!$("telemetry").classList.contains("active"))return;
-  try{
-    const d=await request("/api/telemetry");
-    const val=(x,suffix="")=>x===null||x===undefined?"N/A":String(x)+suffix;
-    $("tTemp").textContent=val(d.chipTempC," °C");
-    $("tClock").textContent=val(d.cpuMHz," MHz");
-    $("tCpu").textContent=val(d.cpuPercent,"%");
-    $("tUptime").textContent=Math.floor(d.uptimeSeconds/3600)+"h "+
-      Math.floor(d.uptimeSeconds%3600/60)+"m";
-    $("tHeapFree").textContent=val(d.heapFreeKb," KB");
-    $("tHeapUsed").textContent=val(d.heapUsedKb," KB");
-    $("tPsram").textContent=d.psramTotalKb?
-      d.psramFreeKb+" / "+d.psramTotalKb+" KB":"Not detected";
-    $("tLora").textContent=val(d.rssi," dBm");
-    $("tWiFi").textContent=val(d.wifiRssi," dBm");
-    $("tDistance").textContent=val(d.distanceCm," cm");
-    $("telemetryMsg").textContent="Live readings from SmartTank";
-  }catch(err){$("telemetryMsg").textContent="Telemetry unavailable: "+err.message;}
 }
 async function act(path,body,msg){
  if(adminRequired())return;
@@ -269,7 +201,7 @@ async function loadDisplay(force=false){
  try{
   const d=await request("/api/display");
   if(!force&&displayDirty)return;
-  for(const id of ["rotation","theme","layout","timeout","dim","buzzer"]){
+  for(const id of ["rotation","theme","timeout","dim","buzzer"]){
    $(id).value=String(d[id]);
   }
   // Live brightness is intentionally reflected, including manual knob changes.
@@ -287,7 +219,7 @@ $("setLight").onclick=()=>{if(adminRequired())return;$("theme").value="4";displa
 $("displayForm").onsubmit=async e=>{
  e.preventDefault();if(adminRequired())return;
  const o={};
- for(const id of ["rotation","theme","layout","timeout","dim","brightness","buzzer","sleepStart","sleepEnd"])
+ for(const id of ["rotation","theme","timeout","dim","brightness","buzzer","sleepStart","sleepEnd"])
   o[id]=$(id).value;
  o.sleepEnabled=$("sleepEnabled").checked?"1":"0";
  try{
@@ -369,7 +301,7 @@ $("locationForm").onsubmit=async e=>{
  weather();
  }catch(err){$("locationMsg").textContent=err.message+" (Internet access is required to search locations.)";}
 };
-setInterval(()=>{if(!$("app").classList.contains("hidden")){refresh();weather();loadTelemetry();}},2000);
+setInterval(()=>{if(!$("app").classList.contains("hidden")){refresh();weather();}},2000);
 setInterval(()=>{
  if(!$("app").classList.contains("hidden")&&!displayDirty){
   loadDisplay();

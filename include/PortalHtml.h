@@ -58,7 +58,7 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <button type="submit">Save tank settings</button><div id="settingsmsg" class="message"></div></form></div>
 <div class="panel span2"><h2>Time & weather</h2><div class="weather"><div class="value" id="temperature">--°C</div><div><div id="weatherText">Weather unavailable</div><small id="weatherPlace">Choose a city in Time & Weather</small></div></div><div class="divider"></div><small>Forecast requires internet. Device clock uses NTP when connected.</small></div>
 </div></section>
-<section id="display" class="page"><div class="panel"><h2>TFT display management</h2><p class="muted">Changes save directly to ESP32; rotation, brightness, timeout, theme, and sleep window are independent of portal appearance.</p><form id="displayForm">
+<section id="display" class="page"><div class="panel"><h2>TFT display management</h2><div class="message" id="displaySync">Reading settings from SmartTank...</div><p class="muted">Changes save directly to ESP32; rotation, brightness, timeout, theme, and sleep window are independent of portal appearance.</p><form id="displayForm">
 <div class="row">
 <div><label>Screen orientation</label><select id="rotation"><option value="0">Portrait · 0°</option><option value="1">Landscape · 90°</option><option value="2">Portrait · 180°</option><option value="3">Landscape · 270°</option></select></div>
 <div><label>Theme</label><select id="theme"><option value="0">Navy</option><option value="1">Slate</option><option value="2">Amber</option><option value="3">Terminal</option><option value="4">Light</option></select></div>
@@ -97,6 +97,8 @@ function switchPage(id){
   document.querySelectorAll("[data-page]").forEach(el=>el.classList.toggle("active",el.dataset.page===id));
 }
 document.querySelectorAll("[data-page]").forEach(el=>el.onclick=()=>switchPage(el.dataset.page));
+// Refresh immediately on return to Display, unless a form edit is pending.
+document.querySelector('[data-page="display"]').addEventListener("click",()=>loadDisplay());
 function showAuth(mode){
   $("loginBox").classList.toggle("hidden",mode!=="login");
   $("changeBox").classList.toggle("hidden",mode!=="change");
@@ -168,16 +170,43 @@ $("pumpStop").onclick=()=>act("/api/pump/stop",{},$("pumpmsg"));
 $("autoOn").onclick=()=>act("/api/auto",{enabled:"1"},$("pumpmsg"));
 $("autoOff").onclick=()=>act("/api/auto",{enabled:"0"},$("pumpmsg"));
 $("tankForm").onsubmit=e=>{e.preventDefault();const o={on:$("on").value,off:$("off").value,minutes:$("mins").value,height:$("height").value,capacity:$("capacity").value};act("/api/settings",o,$("settingsmsg"));};
-async function loadDisplay(){const d=await request("/api/display");
- for(const id of ["rotation","theme","timeout","dim","brightness","buzzer"]){$(id).value=d[id];}
- $("brightness").value=d.brightness<40?100:d.brightness;
- $("sleepEnabled").checked=d.sleepEnabled;$("sleepStart").value=d.sleepStart;$("sleepEnd").value=d.sleepEnd;
+// The ESP32 is authoritative. Editing a form temporarily pauses sync so
+// background reads never replace values the user is currently entering.
+let displayDirty=false;
+let displayLoading=false;
+$("displayForm").addEventListener("input",()=>{displayDirty=true;});
+$("displayForm").addEventListener("change",()=>{displayDirty=true;});
+
+async function loadDisplay(force=false){
+ if(displayLoading||(!force&&displayDirty))return;
+ displayLoading=true;
+ try{
+  const d=await request("/api/display");
+  if(!force&&displayDirty)return;
+  for(const id of ["rotation","theme","timeout","dim","buzzer"]){
+   $(id).value=String(d[id]);
+  }
+  // Live brightness is intentionally reflected, including manual knob changes.
+  $("brightness").value=d.brightness<40?40:d.brightness;
+  $("sleepEnabled").checked=Boolean(d.sleepEnabled);
+  $("sleepStart").value=d.sleepStart;
+  $("sleepEnd").value=d.sleepEnd;
+  $("displaySync").textContent="Synced with SmartTank";
+ }catch(err){
+  $("displaySync").textContent="Unable to sync: "+err.message;
+ }finally{displayLoading=false;}
 }
 $("displayForm").onsubmit=async e=>{
- e.preventDefault();const o={};
- for(const id of ["rotation","theme","timeout","dim","brightness","buzzer","sleepStart","sleepEnd"])o[id]=$(id).value;
+ e.preventDefault();
+ const o={};
+ for(const id of ["rotation","theme","timeout","dim","brightness","buzzer","sleepStart","sleepEnd"])
+  o[id]=$(id).value;
  o.sleepEnabled=$("sleepEnabled").checked?"1":"0";
- await act("/api/display",o,$("displayMsg"));
+ try{
+  $("displayMsg").textContent=await request("/api/display","POST",o);
+  displayDirty=false;
+  await loadDisplay(true);
+ }catch(err){$("displayMsg").textContent="Error: "+err.message;}
 };
 function toggleStatic(){const dhcp=$("netdhcp").value==="1";
  document.querySelectorAll("#staticFields input").forEach(el=>{el.disabled=dhcp;el.required=!dhcp;});
@@ -252,6 +281,11 @@ $("locationForm").onsubmit=async e=>{
  }catch(err){$("locationMsg").textContent=err.message+" (Internet access is required to search locations.)";}
 };
 setInterval(()=>{if(!$("app").classList.contains("hidden")){refresh();weather();}},2000);
+setInterval(()=>{
+ if(!$("app").classList.contains("hidden")&&!displayDirty){
+  loadDisplay();
+ }
+},3000);
 authStatus();
 </script></body></html>
 )stportal";

@@ -121,10 +121,18 @@ function switchPage(id){
  if(id==="location")loadLocation().catch(()=>{});
  if(id==="configuration") {
   syncAdminState();
-  if(!adminActive){
-   pendingPage="configuration";
-   showAuth("login");
-  }
+  // A stored UI flag must not bypass the ESP32's 30-minute session timeout.
+  request("/api/admin/status").then(d=>{
+    adminActive=Boolean(d.authenticated&&!d.mustChange);
+    syncAdminState();
+    if(!adminActive && $("configuration").classList.contains("active")){
+      pendingPage="configuration";
+      showAuth(d.authenticated&&d.mustChange?"change":"login");
+    }
+  }).catch(()=>{
+    adminActive=false;syncAdminState();
+    if($("configuration").classList.contains("active"))showAuth("login");
+  });
  }
 }
 document.querySelectorAll("[data-page]").forEach(el=>el.onclick=()=>switchPage(el.dataset.page));

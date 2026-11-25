@@ -16,6 +16,7 @@ bool started = false;
 // Weather is informational only and must not interrupt pump/sensor tasks.
 // Network work runs on a separate, low priority FreeRTOS task.
 constexpr uint32_t WEATHER_INTERVAL_MS = 15UL * 60UL * 1000UL;
+constexpr uint32_t WEATHER_RETRY_MS = 60UL * 1000UL;
 constexpr uint32_t LOCATION_CHECK_MS = 30000UL;
 
 void loadLocation(float& latitude, float& longitude, char* city, size_t size) {
@@ -33,34 +34,71 @@ void loadLocation(float& latitude, float& longitude, char* city, size_t size) {
 }
 
 // Never call from the main loop. HTTPS may take seconds while connecting.
+void statusMessage(const char* status) {
+  portENTER_CRITICAL(&weatherMux);
+  strlcpy(shared.status, status, sizeof(shared.status));
+  portEXIT_CRITICAL(&weatherMux);
+}
 bool fetchWeather(float latitude, float longitude, float& temp, int& code) {
   WiFiClientSecure tls;
-  // Public noncritical weather only. CA verification should be added
-  // for production use; never use this connection for pump commands.
+  // Only informational weather data, never pump controls.
+  // TODO: validate the Open-Meteo certificate chain in production.
   tls.setInsecure();
-  tls.setTimeout(4000);
+  tls.setTimeout(5000);
 
   HTTPClient http;
   const String url = String("https://api.open-meteo.com/v1/forecast?latitude=")
       + String(latitude, 5) + "&longitude=" + String(longitude, 5)
       + "&current=temperature_2m,weather_code";
-  if (!http.begin(tls, url)) return false;
-  http.setTimeout(4500);
+  // HTTP/1.0 avoids chunked stream parsing problems in some ESP32 cores.
+  http.useHTTP10(true);
+  if (!http.begin(tls, url)) {
+    statusMessage("HTTPS setup failed");
+    Serial.println("[Weather] HTTPS setup failed");
+    return false;
+  }
+  http.setTimeout(6500);
   http.setReuse(false);
   const int status = http.GET();
   if (status != HTTP_CODE_OK) {
-    http.end(); return false;
+    http.end();
+    statusMessage("Weather HTTP error");
+    Serial.printf("[Weather] HTTP error %d\n", status);
+    return false;
+  }
+  const int length = http.getSize();
+  if (length > 4096) {
+    http.end();
+    statusMessage("Weather response too large");
+    return false;
+  }
+  const String body = http.getString();
+  http.end();
+  if (body.length() == 0 || body.length() > 4096) {
+    statusMessage("Weather body missing");
+    return false;
   }
   JsonDocument doc;
-  const DeserializationError error = deserializeJson(doc, http.getStream());
-  http.end();
-  if (error) return false;
+  const DeserializationError error = deserializeJson(doc, body);
+  if (error) {
+    statusMessage("Weather JSON parse failed");
+    Serial.printf("[Weather] JSON error: %s\n", error.c_str());
+    return false;
+  }
   JsonVariant current = doc["current"];
-  if (current.isNull()) return false;
+  if (current.isNull() || current["temperature_2m"].isNull()
+      || current["weather_code"].isNull()) {
+    statusMessage("Weather fields missing");
+    return false;
+  }
   const float value = current["temperature_2m"].as<float>();
-  if (!isfinite(value) || value < -100 || value > 80) return false;
+  const int weather = current["weather_code"].as<int>();
+  if (!isfinite(value) || value < -100 || value > 80 || weather < 0 || weather > 99) {
+    statusMessage("Weather values invalid");
+    return false;
+  }
   temp = value;
-  code = current["weather_code"].as<int>();
+  code = weather;
   return true;
 }
 
@@ -86,16 +124,26 @@ void worker(void*) {
       attempted = false;
       portENTER_CRITICAL(&weatherMux);
       shared.valid = false;
+      strlcpy(shared.status, configured ? "New location" : "Set city in portal", sizeof(shared.status));
       strlcpy(shared.city, city, sizeof(shared.city));
       portEXIT_CRITICAL(&weatherMux);
     }
     if (!configured && !locationChanged) {
       portENTER_CRITICAL(&weatherMux);
       shared.valid = false;
+      strlcpy(shared.status, "Set city in portal", sizeof(shared.status));
       portEXIT_CRITICAL(&weatherMux);
     }
+    if (configured && WiFi.status() != WL_CONNECTED && !attempted) {
+      statusMessage("ESP Wi-Fi offline");
+    }
+    WeatherSnapshot cached;
+    portENTER_CRITICAL(&weatherMux);
+    cached = shared;
+    portEXIT_CRITICAL(&weatherMux);
+    const uint32_t interval = cached.valid ? WEATHER_INTERVAL_MS : WEATHER_RETRY_MS;
     if (configured && WiFi.status() == WL_CONNECTED &&
-        (!attempted || millis() - lastAttempt >= WEATHER_INTERVAL_MS)) {
+        (!attempted || millis() - lastAttempt >= interval)) {
       attempted = true;
       lastAttempt = millis();
       float temp = 0;
@@ -105,9 +153,11 @@ void worker(void*) {
         shared.valid = true;
         shared.temperatureC = temp;
         shared.weatherCode = code;
+        strlcpy(shared.status, "ESP weather updated", sizeof(shared.status));
         shared.updatedAtMs = millis();
         strlcpy(shared.city, city, sizeof(shared.city));
         portEXIT_CRITICAL(&weatherMux);
+        Serial.printf("[Weather] %s %.1f C code=%d\\n", city, temp, code);
       }
     }
     vTaskDelay(pdMS_TO_TICKS(LOCATION_CHECK_MS));
@@ -124,6 +174,30 @@ void weatherServiceBegin() {
     started = false;
     Serial.println("Weather task creation failed; dashboard remains available");
   }
+}
+
+bool weatherServiceAcceptPortal(float latitude, float longitude,
+                                float temperatureC, int weatherCode) {
+  if (!isfinite(latitude) || !isfinite(longitude) ||
+      !isfinite(temperatureC) || temperatureC < -100 || temperatureC > 80 ||
+      weatherCode < 0 || weatherCode > 99) return false;
+  float configuredLat, configuredLon;
+  char city[40] = {};
+  loadLocation(configuredLat, configuredLon, city, sizeof(city));
+  if (!isfinite(configuredLat) || !isfinite(configuredLon) || !city[0] ||
+      fabsf(configuredLat - latitude) > 0.005f ||
+      fabsf(configuredLon - longitude) > 0.005f) return false;
+  portENTER_CRITICAL(&weatherMux);
+  // Location may have changed while reading Preferences. Next background
+  // pass invalidates this cache if a different location is configured.
+  shared.temperatureC = temperatureC;
+  shared.weatherCode = weatherCode;
+  shared.updatedAtMs = millis();
+  shared.valid = true;
+  strlcpy(shared.city, city, sizeof(shared.city));
+  strlcpy(shared.status, "Portal weather synced", sizeof(shared.status));
+  portEXIT_CRITICAL(&weatherMux);
+  return true;
 }
 
 WeatherSnapshot weatherServiceSnapshot() {

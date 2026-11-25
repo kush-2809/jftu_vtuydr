@@ -13,6 +13,9 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 .config-page{display:none}.config-page.active{display:block}
 #telemetry .value{font-size:24px}#telemetryCards{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 @media(max-width:540px){#telemetryCards{grid-template-columns:repeat(2,minmax(0,1fr))}#telemetry .value{font-size:19px}}
+.portalTank{width:74px;height:112px;border:3px solid #87b4cb;border-radius:12px;position:relative;background:#d4e8f3;overflow:hidden;margin:10px auto 3px}
+.portalWater{position:absolute;bottom:0;left:0;width:100%;height:0;background:linear-gradient(#54bcff,#087de7);transition:height .5s}
+.portalTankLine{height:1px;width:100%;position:absolute;left:0;background:#ffffff70;z-index:1}.portalTankTop{top:25%}.portalTankMid{top:55%}
 </style></head><body><main>
 <section id="loginBox" class="panel auth hidden" role="dialog" aria-label="Administrator unlock">
 <div class="eyebrow">SMART HOME · WATER MANAGEMENT</div><h1>SmartTank</h1>
@@ -47,7 +50,9 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <small>To change the retry time, use System Retry on the TFT display.</small>
 </div>
 <div class="grid">
-<div class="panel"><small>WATER LEVEL</small><div class="value accent" id="level">--%</div><small id="volume">Waiting for sensor</small></div>
+<div class="panel"><small>WATER LEVEL</small>
+<div class="portalTank" aria-hidden="true"><div class="portalWater" id="portalWater"></div><div class="portalTankLine portalTankTop"></div><div class="portalTankLine portalTankMid"></div></div>
+<div class="value accent" id="level">--%</div><small id="volume">Waiting for sensor</small></div>
 <div class="panel"><small>PUMP OUTPUT</small><div class="value" id="pump">--</div><small id="pumpmode">--</small></div>
 <div class="panel"><small>LoRa SENSOR</small><div class="value" id="link">--</div><small id="distance">--</small></div>
 <div class="panel"><small>AUTOMATIC MODE</small><div class="value" id="auto">--</div><small id="thresholds">--</small></div>
@@ -164,7 +169,7 @@ async function authStatus(){
   try{
     const d=await request("/api/admin/status");
     adminActive=Boolean(d.authenticated&&!d.mustChange);
-    if(d.authenticated&&d.mustChange)showAuth("change");
+    // Never prompt for admin until Configuration is explicitly opened.
   }catch{adminActive=false;}
   await Promise.allSettled([loadDisplay(true),loadLocation()]);
   refresh();weather();
@@ -202,6 +207,7 @@ async function refresh(){
   try{
     const d=await request("/api/status");$("level").textContent=d.levelValid?d.level.toFixed(1)+"%":"--%";
     $("volume").textContent=d.levelValid?d.volume.toFixed(0)+" / "+d.capacity.toFixed(0)+" L":"Level unavailable";
+    $("portalWater").style.height=(d.levelValid?Math.max(0,Math.min(100,d.level)):0)+"%";
     $("pump").textContent=d.pumpOn?"ON":"OFF";$("pumpmode").textContent=d.override?"Manual override":d.autoState;
     $("link").textContent=d.sensorConnected?"ONLINE":"OFFLINE";
     $("distance").textContent=d.sensorValid?"Distance: "+d.distance.toFixed(1)+" cm":"Sensor data unavailable";

@@ -135,6 +135,11 @@ bool portalAuthChange(const String& previous, const String& next) {
   if (p.begin("portal-auth", false)) { p.putBool("changed", true); p.end(); }
   return true;
 }
+bool portalAuthSessionValid(WebServer& server) {
+  if (sessionMatches(server)) return true;
+  server.send(401, "text/plain", "Admin login required");
+  return false;
+}
 bool portalAuthCheck(WebServer& server) {
   if (!sessionMatches(server)) {
     server.send(401, "text/plain", "Admin login required");

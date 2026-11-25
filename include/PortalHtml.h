@@ -170,6 +170,7 @@ $("autoOff").onclick=()=>act("/api/auto",{enabled:"0"},$("pumpmsg"));
 $("tankForm").onsubmit=e=>{e.preventDefault();const o={on:$("on").value,off:$("off").value,minutes:$("mins").value,height:$("height").value,capacity:$("capacity").value};act("/api/settings",o,$("settingsmsg"));};
 async function loadDisplay(){const d=await request("/api/display");
  for(const id of ["rotation","theme","timeout","dim","brightness","buzzer"]){$(id).value=d[id];}
+ $("brightness").value=d.brightness<40?100:d.brightness;
  $("sleepEnabled").checked=d.sleepEnabled;$("sleepStart").value=d.sleepStart;$("sleepEnd").value=d.sleepEnd;
 }
 $("displayForm").onsubmit=async e=>{

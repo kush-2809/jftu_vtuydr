@@ -355,10 +355,12 @@ void handleDisplaySave() {
   themeSet(theme);
   displaySetTimeoutSeconds(timeout);
   displaySetDimStep(dim);
-  // Existing dashboard brightness adjustment uses a 10% step.
-  int delta = ((int)brightness - (int)displayBrightnessPercent()) / 10;
-  for (int i = 0; i < abs(delta); ++i)
-    displayAdjustBrightness(delta > 0 ? 1 : -1);
+  // Do not force the backlight ON during a configured sleep window.
+  if (!inSleepWindow()) {
+    int delta = ((int)brightness - (int)displayBrightnessPercent()) / 10;
+    for (int i = 0; i < abs(delta); ++i)
+      displayAdjustBrightness(delta > 0 ? 1 : -1);
+  }
   buzzerSetVolume(buzz);
   SleepWindow& sw = sleepWindow();
   sw.startHour = sh; sw.startMinute = sm;

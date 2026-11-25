@@ -6,7 +6,6 @@
 #include "FeatureControl.h"
 #include "Management.h"
 #include "DisplayOrientation.h"
-#include "DashboardLayout.h"
 #include <WiFi.h>
 
 static void drawSelectedRow(int x, int y, int w, int h) {
@@ -16,8 +15,7 @@ static void drawSelectedRow(int x, int y, int w, int h) {
 }
 
 static String menuItemState(Page page, int index) {
-  if (page == Page::Layout) return index == dashboardLayoutIndex() ? "ACTIVE" : "";
-  if (page == Page::ThemeSelect) return index == themeIndex() ? "ACTIVE" : "";
+  if (page == Page::Layout) return index == themeIndex() ? "ACTIVE" : "";
   if (page == Page::AdminConfig) {
     switch (menuItemAt(page, index).target) {
       case Page::AdminToggleLoRa: return featureLoraEnabled() ? "ON" : "OFF";

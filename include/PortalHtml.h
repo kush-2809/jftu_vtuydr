@@ -118,7 +118,6 @@ $("loginForm").onsubmit=async e=>{
   }catch(err){$("loginMsg").textContent=err.message;}
 };
 async function changePassword(oldp,newp,target){
-  if(newp==="Admin123@")throw Error("Choose a different password.");
   await request("/api/admin/change","POST",{old:oldp,next:newp});
   target.textContent="Password updated.";
 }
@@ -222,7 +221,7 @@ function weatherDescription(code){
  if(code<=86)return"Snow showers";if(code>=95)return"Thunderstorm";return"Cloudy";
 }
 async function weather(){
- if(!loc.lat||!loc.lon||$("app").classList.contains("hidden"))return;
+ if(!Number.isFinite(Number(loc.lat))||!Number.isFinite(Number(loc.lon))||!loc.city||$("app").classList.contains("hidden"))return;
  if(Date.now()-weatherUpdated<600000)return;
  try{
  const url="https://api.open-meteo.com/v1/forecast?latitude="+encodeURIComponent(loc.lat)+"&longitude="+encodeURIComponent(loc.lon)+"&current=temperature_2m,weather_code&timezone=auto";
@@ -231,7 +230,7 @@ async function weather(){
  $("temperature").textContent=t;$("weatherTemperature").textContent=t;
  $("weatherText").textContent=desc;$("weatherDescription").textContent=desc;
  $("weatherPlace").textContent=loc.city+", "+loc.country;weatherUpdated=Date.now();
- }catch(err){$("weatherText").textContent="Weather unavailable (internet required)";$("weatherDescription").textContent="Weather unavailable";}
+ }catch(err){weatherUpdated=Date.now();$("weatherText").textContent="Weather unavailable (internet required)";$("weatherDescription").textContent="Weather unavailable";}
 }
 $("locationForm").onsubmit=async e=>{
  e.preventDefault();$("locationMsg").textContent="Finding city and its time zone...";

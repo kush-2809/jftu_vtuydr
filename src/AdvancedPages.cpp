@@ -463,7 +463,7 @@ void uiSystemRetryDraw() {
   canvas.print(timeIsValid() ? "Clock: synchronized/valid" : "Clock required: sync NTP first");
   canvas.setCursor(10, 253);
   canvas.setTextColor(warning ? t.err : t.muted, t.bg);
-  canvas.print(warning ? "3 retries failed. Set a time or await retry." : "Manual retry time clears the alert.");
+  canvas.print(warning ? "No water rise. Set time or await retry." : "Manual retry time clears the alert.");
   simpleFooter("ROTATE: EDIT  PRESS: NEXT / ACTION  HOLD: BACK");
   canvas.pushSprite(0, 0);
 }

@@ -77,7 +77,6 @@ bool sessionMatches(WebServer& server) {
   for (size_t i = 0; i < sessionToken.length(); ++i)
     diff |= (uint8_t)(supplied[i] ^ sessionToken[i]);
   if (diff) return false;
-  lastSessionAt = millis();
   return true;
 }
 } // namespace
@@ -135,6 +134,7 @@ bool portalAuthChange(const String& previous, const String& next) {
   if (p.begin("portal-auth", false)) { p.putBool("changed", true); p.end(); }
   return true;
 }
+bool portalAuthIsAuthenticated(WebServer& server) { return sessionMatches(server); }
 bool portalAuthSessionValid(WebServer& server) {
   if (sessionMatches(server)) return true;
   server.send(401, "text/plain", "Admin login required");

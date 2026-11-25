@@ -62,7 +62,7 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <section id="display" class="page"><div class="panel"><h2>TFT display management</h2><div class="message" id="displaySync">Reading settings from SmartTank...</div><p class="muted">Changes save directly to ESP32; rotation, brightness, timeout, theme, and sleep window are independent of portal appearance.</p><form id="displayForm">
 <div class="row">
 <div><label>Screen orientation</label><select id="rotation"><option value="0">Portrait · 0°</option><option value="1">Landscape · 90°</option><option value="2">Portrait · 180°</option><option value="3">Landscape · 270°</option></select></div>
-<div><label>Theme</label><select id="theme"><option value="0">Navy</option><option value="1">Slate</option><option value="2">Amber</option><option value="3">Terminal</option><option value="4">Light</option></select></div>
+<div><label>Theme · Dark/Light</label><select id="theme"><option value="0">Midnight (Dark)</option><option value="1">Slate</option><option value="2">Amber</option><option value="3">Terminal</option><option value="4">Daylight (Light)</option></select></div>
 <div><label>Idle timeout (seconds, 0 = off)</label><input id="timeout" type="number" min="0" max="600" required></div>
 <div><label>Dim step (%)</label><select id="dim"><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option></select></div>
 <div><label>Brightness (%)</label><input id="brightness" type="number" min="40" max="100" step="10" required></div>
@@ -70,7 +70,7 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <div><label>Sleep window start (HH:MM)</label><input id="sleepStart" type="time" required></div>
 <div><label>Sleep window end (HH:MM)</label><input id="sleepEnd" type="time" required></div>
 </div><label><input id="sleepEnabled" type="checkbox" style="width:auto;display:inline;margin:10px"> Enable sleep window</label><br>
-<button type="submit">Save display settings</button><div id="displayMsg" class="message"></div></form></div></section>
+<div class="actions"><button type="button" id="setDark" class="alt">Dark display</button><button type="button" id="setLight" class="alt">Light display</button></div><button type="submit">Save display settings</button><div id="displayMsg" class="message"></div></form></div></section>
 <section id="wifi" class="page"><div class="panel"><h2>Wi-Fi connection</h2><p class="muted" id="wifiinfo">Network details loading...</p><div class="actions"><button id="scanBtn" type="button" class="alt">Scan nearby networks</button></div><div id="scanMsg" class="message">Scan to see networks detected by the ESP32-S3 (2.4 GHz).</div><div id="wifiNetworks"></div><div class="divider"></div>
 <form id="wifiForm"><label>Wi-Fi name (SSID)</label><input id="wifiSSID" maxlength="32" placeholder="Select a network or enter manually" required><label>Wi-Fi password</label><input id="wifiPassword" type="password" maxlength="63" autocomplete="new-password" placeholder="Enter network password">
 <button type="submit">Save Wi-Fi and connect</button><div id="wifiMsg" class="message"></div></form><div class="help">Setup access point remains a recovery path while switching networks. This dashboard may reconnect at a new IP.</div></div></section>
@@ -196,6 +196,7 @@ $("displayForm").addEventListener("change",()=>{displayDirty=true;});
 
 async function loadDisplay(force=false){
  if(displayLoading||(!force&&displayDirty))return;
+ if(force)displayDirty=false;
  displayLoading=true;
  try{
   const d=await request("/api/display");
@@ -208,11 +209,13 @@ async function loadDisplay(force=false){
   $("sleepEnabled").checked=Boolean(d.sleepEnabled);
   $("sleepStart").value=d.sleepStart;
   $("sleepEnd").value=d.sleepEnd;
-  $("displaySync").textContent="Synced with SmartTank";
+  $("displaySync").textContent="Live settings from SmartTank · changes made with the rotary are reflected here";
  }catch(err){
   $("displaySync").textContent="Unable to sync: "+err.message;
  }finally{displayLoading=false;}
 }
+$("setDark").onclick=()=>{if(adminRequired())return;$("theme").value="0";displayDirty=true;$("displayForm").requestSubmit();};
+$("setLight").onclick=()=>{if(adminRequired())return;$("theme").value="4";displayDirty=true;$("displayForm").requestSubmit();};
 $("displayForm").onsubmit=async e=>{
  e.preventDefault();if(adminRequired())return;
  const o={};

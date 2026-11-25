@@ -19,6 +19,7 @@
 #include "Telemetry.h"
 #include "Management.h"
 #include "FeatureControl.h"
+#include "WeatherService.h"
 
 // All globals are in StateDefinitions.cpp
 // All pages are in Page*.cpp / UiDrawHelpers.cpp / UiPages.cpp
@@ -103,7 +104,8 @@ void setup() {
   schedulerInit();
   displayEngineInit();
   wifiManagerBegin();
-telemetryInit();
+  weatherServiceBegin();
+  telemetryInit();
   drawCurrentScreen();
 }
 

@@ -11,6 +11,15 @@
 #include "PumpController.h"
 #include "TankSettings.h"
 #include "Management.h"
+#include "PortalAuth.h"
+#include "PortalHtml.h"
+#include "DisplayEngine.h"
+#include "DisplayOrientation.h"
+#include "Theme.h"
+#include "Buzzer.h"
+#include "Scheduler.h"
+#include "TimeService.h"
+#include <Preferences.h>
 
 namespace {
 WebServer server(80);
@@ -20,237 +29,16 @@ bool portalConfigured = false;
 bool portalStarted = false;
 bool dnsStarted = false;
 
-const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
-<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#0f172a"><title>SmartTank</title>
-<style>
-:root{color-scheme:dark;font-family:Arial,sans-serif}*{box-sizing:border-box}body{margin:0;background:#0b1220;color:#e5e7eb;padding:18px}
-main{max-width:760px;margin:auto}.top{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
-h1{font-size:25px;margin:8px 0}.muted{color:#94a3b8;font-size:13px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:16px 0}
-.card{background:#172235;border:1px solid #29384f;border-radius:14px;padding:16px}.value{font-size:27px;font-weight:700;margin-top:8px}.wide{grid-column:1/-1}
-button{border:0;border-radius:9px;padding:12px 15px;background:#0d9488;color:white;font-weight:700;cursor:pointer;margin:4px 4px 4px 0}button.danger{background:#b45309}button.secondary{background:#334155}
-input,select{
-  width:100%;
-  padding:11px;
-  border-radius:8px;
-  border:1px solid #475569;
-  background:#0f172a;
-  color:white;
-  margin:6px 0 12px;
-}
-
-input:disabled{
-  opacity:0.45;
-}label{font-size:13px;color:#cbd5e1}
-.status{padding:8px 10px;border-radius:8px;background:#26364d;display:inline-block;font-size:13px}.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:480px){.row{grid-template-columns:1fr}}
-</style></head><body><main>
-<div class="top"><div><h1>SmartTank Control</h1><div class="muted">Local controller dashboard</div></div><span class="status" id="net">Loading network…</span></div>
-<div class="grid">
-<section class="card"><div class="muted">WATER LEVEL</div><div class="value" id="level">--%</div><div class="muted" id="volume">-- L</div></section>
-<section class="card"><div class="muted">PUMP OUTPUT</div><div class="value" id="pump">--</div><div class="muted" id="pumpmode">--</div></section>
-<section class="card"><div class="muted">SENSOR / LORA</div><div class="value" id="link">--</div><div class="muted" id="distance">Distance: --</div></section>
-<section class="card"><div class="muted">AUTOMATIC MODE</div><div class="value" id="auto">--</div><div class="muted" id="thresholds">--</div></section>
-<section class="card wide"><h3>Manual pump override</h3><p class="muted">Uses the controller's existing override timeout and sensor/automatic-mode safeguards.</p>
-<button onclick="post('/api/pump/start')">Start manual override</button><button class="danger" onclick="post('/api/pump/stop')">Stop manual override</button><div class="muted" id="pumpmsg"></div></section>
-<section class="card wide"><h3>Automatic control</h3><button onclick="setAuto(true)">Enable automatic</button><button class="secondary" onclick="setAuto(false)">Disable automatic</button></section>
-<section class="card wide"><h3>Tank & pump settings</h3><form id="settings" onsubmit="saveSettings(event)">
-<div class="row"><div><label>Auto ON threshold (%)</label><input id="on" type="number" min="0" max="99" step="0.5" required></div>
-<div><label>Auto OFF threshold (%)</label><input id="off" type="number" min="1" max="100" step="0.5" required></div></div>
-<div class="row"><div><label>Manual override timeout (minutes)</label><input id="mins" type="number" min="1" max="120" required></div>
-<div><label>Tank height (cm)</label><input id="height" type="number" min="20" max="500" step="0.5" required></div></div>
-<div><label>Tank capacity (litres)</label><input id="capacity" type="number" min="1" max="100000" step="1" required></div>
-<button type="submit">Save settings</button><span class="muted" id="settingsmsg"></span></form></section>
-
-<section class="card wide">
-<h3>Wi-Fi</h3>
-
-<div class="muted" id="wifiinfo">--</div>
-
-<p class="muted">
-Connect SmartTank to your home Wi-Fi network.
-</p>
-
-<form action="/save" method="POST">
-<label>Home Wi-Fi network name (SSID)</label>
-<input name="ssid" maxlength="32"
-       placeholder="Enter Wi-Fi SSID" required>
-
-<label>Wi-Fi password</label>
-<input name="password" type="password" maxlength="63"
-       placeholder="Enter Wi-Fi password">
-
-<button type="submit">Save Wi-Fi & connect</button>
-</form>
-</section>
-
-<section class="card wide">
-<h3>Network Configuration</h3>
-
-<p class="muted">
-DHCP is recommended. Static IP is optional.
-Changes apply after restarting SmartTank.
-</p>
-
-<form id="networkForm" onsubmit="saveNetworkConfig(event)">
-
-<label>IP Assignment</label>
-<select id="netdhcp" onchange="toggleStaticFields()">
-  <option value="1">DHCP - Automatic (Recommended)</option>
-  <option value="0">Static IP</option>
-</select>
-
-<div id="staticFields">
-
-<div class="row">
-  <div>
-    <label>Static IP Address</label>
-    <input id="netip" type="text"
-           placeholder="192.168.1.210">
-  </div>
-
-  <div>
-    <label>Gateway</label>
-    <input id="netgateway" type="text"
-           placeholder="192.168.1.1">
-  </div>
-</div>
-
-<div class="row">
-  <div>
-    <label>Subnet Mask</label>
-    <input id="netsubnet" type="text"
-           placeholder="255.255.255.0">
-  </div>
-
-  <div>
-    <label>DNS Server</label>
-    <input id="netdns" type="text"
-           placeholder="8.8.8.8">
-  </div>
-</div>
-
-</div>
-
-<label>Device Hostname (without .local)</label>
-<input id="nethost" type="text"
-       maxlength="24" placeholder="smarttank" required>
-
-<h3>Setup Access Point</h3>
-
-<div class="row">
-  <div>
-    <label>Setup AP IP Address</label>
-    <input id="netapip" type="text"
-           placeholder="192.168.4.1" required>
-  </div>
-
-  <div>
-    <label>Setup AP Subnet</label>
-    <input id="netapsubnet" type="text"
-           placeholder="255.255.255.0" required>
-  </div>
-</div>
-
-<button type="submit">Save Network Configuration</button>
-
-<div class="muted" id="networkmsg"></div>
-
-</form>
-</section>
-</div><div class="muted">Refreshes automatically every 2 seconds. Keep pump power isolated during software testing.</div>
-</main><script>
-async function post(url,body={}){try{let r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});let t=await r.text();document.getElementById('pumpmsg').textContent=t;if(!r.ok)throw Error(t);refresh()}catch(e){document.getElementById('pumpmsg').textContent='Error: '+e.message}}
-function setAuto(enabled){post('/api/auto',{enabled:enabled?'1':'0'})}
-async function saveSettings(e){e.preventDefault();let b={on:document.getElementById('on').value,off:document.getElementById('off').value,minutes:document.getElementById('mins').value,height:document.getElementById('height').value,capacity:document.getElementById('capacity').value};try{let r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(b)});let t=await r.text();document.getElementById('settingsmsg').textContent=t;if(!r.ok)throw Error(t);refresh()}catch(e){document.getElementById('settingsmsg').textContent='Error: '+e.message}}
-
-function toggleStaticFields() {
-  const dhcp = document.getElementById("netdhcp").value === "1";
-  const fields = document.querySelectorAll("#staticFields input");
-
-  fields.forEach(input => {
-    input.disabled = dhcp;
-    input.required = !dhcp;
-  });
-}
-
-async function loadNetworkConfig() {
-  try {
-    const response = await fetch("/api/network-config", {
-      cache: "no-store"
-    });
-
-    if (!response.ok) throw new Error("Could not load network settings");
-
-    const d = await response.json();
-
-    document.getElementById("netdhcp").value = d.dhcp ? "1" : "0";
-    document.getElementById("netip").value = d.ip;
-    document.getElementById("netgateway").value = d.gateway;
-    document.getElementById("netsubnet").value = d.subnet;
-    document.getElementById("netdns").value = d.dns;
-    document.getElementById("nethost").value = d.hostname;
-    document.getElementById("netapip").value = d.apip;
-    document.getElementById("netapsubnet").value = d.apsubnet;
-
-    toggleStaticFields();
-
-  } catch (error) {
-    document.getElementById("networkmsg").textContent = error.message;
-  }
-}
-
-async function saveNetworkConfig(event) {
-  event.preventDefault();
-
-  const data = {
-    dhcp: document.getElementById("netdhcp").value,
-    ip: document.getElementById("netip").value.trim(),
-    gateway: document.getElementById("netgateway").value.trim(),
-    subnet: document.getElementById("netsubnet").value.trim(),
-    dns: document.getElementById("netdns").value.trim(),
-    hostname: document.getElementById("nethost").value.trim(),
-    apip: document.getElementById("netapip").value.trim(),
-    apsubnet: document.getElementById("netapsubnet").value.trim()
-  };
-
-  const message = document.getElementById("networkmsg");
-
-  try {
-    const response = await fetch("/api/network-config", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: new URLSearchParams(data)
-    });
-
-    const result = await response.text();
-    message.textContent = result;
-
-    if (!response.ok) throw new Error(result);
-
-  } catch (error) {
-    message.textContent = "Error: " + error.message;
-  }
-}
-
-async function refresh(){try{let r=await fetch('/api/status',{cache:'no-store'});let d=await r.json();document.getElementById('level').textContent=d.levelValid?d.level.toFixed(1)+'%':'--';document.getElementById('volume').textContent=d.levelValid?d.volume.toFixed(0)+' / '+d.capacity.toFixed(0)+' L':'Level unavailable';document.getElementById('pump').textContent=d.pumpOn?'ON':'OFF';document.getElementById('pumpmode').textContent=d.override?'Manual override':(d.autoState||'Idle');document.getElementById('link').textContent=d.sensorConnected?'CONNECTED':'OFFLINE';document.getElementById('distance').textContent='Distance: '+(d.sensorValid?d.distance.toFixed(1)+' cm':'--');document.getElementById('auto').textContent=d.autoEnabled?'ENABLED':'DISABLED';document.getElementById('thresholds').textContent='ON '+d.autoOn+'% · OFF '+d.autoOff+'%';document.getElementById('net').textContent=d.wifiConnected?'Home Wi-Fi connected':(d.apActive?'SmartTank setup AP':'Wi-Fi offline');document.getElementById('wifiinfo').textContent='IP: '+d.ip+' · Host: '+d.hostname;['on','off','mins','height','capacity'].forEach((id,i)=>{let el=document.getElementById(id);if(!el.matches(':focus'))el.value=[d.autoOn,d.autoOff,d.overrideMinutes,d.height,d.capacity][i]})}catch(e){document.getElementById('net').textContent='Controller not reachable'}}
-refresh();
-loadNetworkConfig();
-setInterval(refresh, 2000);
-</script></body></html>
-)rawliteral";
-
 void sendMessage(int code, const String& message) {
   server.send(code, "text/plain; charset=utf-8", message);
 }
 
 void handleRoot() {
-  server.send_P(200, "text/html; charset=utf-8", DASHBOARD_HTML);
+  server.send_P(200, "text/html; charset=utf-8", SMARTTANK_PORTAL_HTML);
 }
 
 void handleStatus() {
+  if (!portalAuthCheck(server)) return;
   String json = "{";
   json += "\"levelValid\":" + String(waterLevelValid ? "true" : "false");
   json += ",\"level\":" + String(waterLevelPercent, 1);
@@ -269,7 +57,15 @@ void handleStatus() {
   json += ",\"wifiConnected\":" + String(wifiManagerIsConnected() ? "true" : "false");
   json += ",\"apActive\":" + String(wifiManagerIsAPActive() ? "true" : "false");
   json += ",\"ip\":\"" + wifiManagerGetIP() + "\"";
-  json += ",\"hostname\":\"" + wifiManagerGetHostname() + "\"";
+  String host = wifiManagerGetHostname();
+  if (host.endsWith(".local")) host.remove(host.length() - 6);
+  json += ",\"hostname\":\"" + host + "\"";
+  json += ",\"retryWarning\":" + String(pumpRetryWarningActive() ? "true" : "false");
+  json += ",\"retrySeconds\":" + String(pumpRetryRemainingSeconds());
+  json += ",\"retryManual\":" + String(pumpRetryManualTimeEnabled() ? "true" : "false");
+  json += ",\"retryHour\":" + String(pumpRetryManualHour());
+  json += ",\"retryMinute\":" + String(pumpRetryManualMinute());
+  json += ",\"clock\":\"" + timeFormatFull() + "\"";
   const char* state = "IDLE";
   if (autoPumpState == AUTO_FILLING) state = "FILLING";
   else if (autoPumpState == AUTO_RETRY_WAIT) state = "RETRY WAIT";
@@ -279,6 +75,7 @@ void handleStatus() {
 }
 
 void handlePumpStart() {
+  if (!portalAuthCheck(server)) return;
   if (!remoteConnected || !sensorReadingValid || !waterLevelValid) {
     sendMessage(409, "Cannot start: valid LoRa sensor data is required.");
     return;
@@ -293,6 +90,7 @@ void handlePumpStart() {
 }
 
 void handlePumpStop() {
+  if (!portalAuthCheck(server)) return;
   if (!manualOverrideActive) {
     sendMessage(409, "No manual override is active. Automatic filling is not stopped by this button.");
     return;
@@ -302,6 +100,7 @@ void handlePumpStop() {
 }
 
 void handleAutoMode() {
+  if (!portalAuthCheck(server)) return;
   if (!server.hasArg("enabled")) { sendMessage(400, "Missing enabled parameter."); return; }
   bool enabled = server.arg("enabled") == "1";
   if (enabled && !managementModeSupportsAuto()) {
@@ -323,6 +122,7 @@ void handleAutoMode() {
 }
 
 void handleSettings() {
+  if (!portalAuthCheck(server)) return;
   if (!server.hasArg("on") || !server.hasArg("off") || !server.hasArg("minutes") ||
       !server.hasArg("height") || !server.hasArg("capacity")) {
     sendMessage(400, "All settings are required."); return;
@@ -354,6 +154,7 @@ void handleSettings() {
 }
 
 void handleNetworkConfigGet() {
+  if (!portalAuthCheck(server)) return;
   String json = "{";
 
   json += "\"dhcp\":";
@@ -373,6 +174,7 @@ void handleNetworkConfigGet() {
 }
 
 void handleNetworkConfigSave() {
+  if (!portalAuthCheck(server)) return;
   const char* required[] = {
     "dhcp", "ip", "gateway", "subnet",
     "dns", "hostname", "apip", "apsubnet"
@@ -404,7 +206,216 @@ void handleNetworkConfigSave() {
   sendMessage(saved ? 200 : 400, error);
 }
 
+
+String escapeJson(const String& value) {
+  String out; out.reserve(value.length() + 8);
+  for (size_t i = 0; i < value.length(); ++i) {
+    unsigned char c = value[i];
+    if (c == '"') out += "\\\"";
+    else if (c == '\\') out += "\\\\";
+    else if (c == '\n') out += "\\n";
+    else if (c == '\r') out += "\\r";
+    else if (c == '\t') out += "\\t";
+    else if (c < 32) {
+      char temp[7];
+      snprintf(temp, sizeof(temp), "\\u%04x", c);
+      out += temp;
+    } else out += (char)c;
+  }
+  return out;
+}
+void handleAdminStatus() {
+  const bool ok = portalAuthIsAuthenticated(server);
+  String json = "{\"authenticated\":";
+  json += ok ? "true" : "false";
+  json += ",\"mustChange\":";
+  json += (ok && portalAuthMustChange()) ? "true" : "false";
+  json += "}";
+  server.send(200, "application/json", json);
+}
+void handleAdminLogin() {
+  if (!server.hasArg("password")) {
+    sendMessage(400, "Password required"); return;
+  }
+  String token;
+  if (!portalAuthLogin(server.arg("password"), token)) {
+    sendMessage(401, "Invalid password or temporary login lockout"); return;
+  }
+  server.sendHeader("Set-Cookie",
+      "stsession=" + token + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=1800");
+  String response = "{\"mustChange\":";
+  response += portalAuthMustChange() ? "true" : "false";
+  response += "}";
+  server.send(200, "application/json", response);
+}
+void handleAdminChange() {
+  if (!portalAuthSessionValid(server)) return;
+  if (!server.hasArg("old") || !server.hasArg("next")) {
+    sendMessage(400, "Current and new passwords required"); return;
+  }
+  if (!portalAuthChange(server.arg("old"), server.arg("next"))) {
+    sendMessage(400, "Incorrect current password, or new password invalid (10-64 characters)"); return;
+  }
+  sendMessage(200, "Administrator password updated");
+}
+void handleAdminLogout() {
+  if (!portalAuthSessionValid(server)) return;
+  portalAuthLogout();
+  server.sendHeader("Set-Cookie", "stsession=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict");
+  sendMessage(200, "Logged out");
+}
+void handleWifiScanStart() {
+  if (!portalAuthCheck(server)) return;
+  if (WiFi.scanComplete() == WIFI_SCAN_RUNNING) {
+    sendMessage(202, "Wi-Fi scan already running"); return;
+  }
+  WiFi.scanDelete();
+  int scan = WiFi.scanNetworks(true, true, false, 120);
+  if (scan == WIFI_SCAN_FAILED) {
+    sendMessage(503, "Unable to start Wi-Fi scan"); return;
+  }
+  sendMessage(202, "Scanning");
+}
+void handleWifiScanResult() {
+  if (!portalAuthCheck(server)) return;
+  int count = WiFi.scanComplete();
+  if (count == WIFI_SCAN_RUNNING) {
+    server.send(200, "application/json", "{\"state\":\"scanning\",\"networks\":[]}"); return;
+  }
+  if (count == WIFI_SCAN_FAILED) {
+    server.send(200, "application/json", "{\"state\":\"idle\",\"networks\":[]}"); return;
+  }
+  String json = "{\"state\":\"done\",\"networks\":[";
+  const int limit = count < 25 ? count : 25;
+  for (int i = 0; i < limit; ++i) {
+    if (i) json += ",";
+    json += "{\"ssid\":\"" + escapeJson(WiFi.SSID(i)) + "\"";
+    json += ",\"rssi\":" + String(WiFi.RSSI(i));
+    json += ",\"secured\":";
+    json += WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "false" : "true";
+    json += "}";
+  }
+  json += "]}";
+  server.send(200, "application/json", json);
+  WiFi.scanDelete();
+}
+bool parseClock(const String& value, uint8_t& h, uint8_t& m) {
+  if (value.length() != 5 || value[2] != ':' ||
+      !isDigit(value[0]) || !isDigit(value[1]) ||
+      !isDigit(value[3]) || !isDigit(value[4])) return false;
+  int hh = (value[0] - '0') * 10 + value[1] - '0';
+  int mm = (value[3] - '0') * 10 + value[4] - '0';
+  if (hh > 23 || mm > 59) return false;
+  h = hh; m = mm; return true;
+}
+void handleDisplayGet() {
+  if (!portalAuthCheck(server)) return;
+  const SleepWindow& sw = sleepWindow();
+  char start[6], end[6];
+  snprintf(start, sizeof(start), "%02u:%02u", sw.startHour, sw.startMinute);
+  snprintf(end, sizeof(end), "%02u:%02u", sw.endHour, sw.endMinute);
+  String j = "{\"rotation\":" + String(displayRotation());
+  j += ",\"theme\":" + String(themeIndex());
+  j += ",\"timeout\":" + String(displayGetTimeoutSeconds());
+  j += ",\"dim\":" + String(displayGetDimStep());
+  j += ",\"brightness\":" + String(displayBrightnessPercent());
+  j += ",\"buzzer\":" + String(buzzerVolume());
+  j += ",\"sleepEnabled\":" + String(sw.enabled ? "true" : "false");
+  j += ",\"sleepStart\":\"" + String(start) + "\"";
+  j += ",\"sleepEnd\":\"" + String(end) + "\"}";
+  server.send(200, "application/json", j);
+}
+void handleDisplaySave() {
+  if (!portalAuthCheck(server)) return;
+  const char* required[] = {
+      "rotation","theme","timeout","dim","brightness","buzzer",
+      "sleepStart","sleepEnd","sleepEnabled"};
+  for (const char* key : required)
+    if (!server.hasArg(key)) { sendMessage(400, String("Missing ") + key); return; }
+  int rotation = server.arg("rotation").toInt();
+  int theme = server.arg("theme").toInt();
+  int timeout = server.arg("timeout").toInt();
+  int dim = server.arg("dim").toInt();
+  int brightness = server.arg("brightness").toInt();
+  int buzz = server.arg("buzzer").toInt();
+  uint8_t sh, sm, eh, em;
+  if (rotation < 0 || rotation > 3 || theme < 0 || theme >= themeCount()
+      || timeout < 0 || timeout > 600 || (dim != 10 && dim != 15 && dim != 20)
+      || brightness < 40 || brightness > 100 || brightness % 10 != 0
+      || buzz < 0 || buzz > 3
+      || !parseClock(server.arg("sleepStart"), sh, sm)
+      || !parseClock(server.arg("sleepEnd"), eh, em)) {
+    sendMessage(400, "Invalid display settings"); return;
+  }
+  if (!displaySetRotation(rotation)) {
+    sendMessage(500, "Unable to resize display sprite; no settings changed"); return;
+  }
+  themeSet(theme);
+  displaySetTimeoutSeconds(timeout);
+  displaySetDimStep(dim);
+  // Existing dashboard brightness adjustment uses a 10% step.
+  int delta = ((int)brightness - (int)displayBrightnessPercent()) / 10;
+  for (int i = 0; i < abs(delta); ++i)
+    displayAdjustBrightness(delta > 0 ? 1 : -1);
+  buzzerSetVolume(buzz);
+  SleepWindow& sw = sleepWindow();
+  sw.startHour = sh; sw.startMinute = sm;
+  sw.endHour = eh; sw.endMinute = em;
+  sw.enabled = server.arg("sleepEnabled") == "1";
+  prefsSaveSleep();
+  sendMessage(200, "Display settings saved");
+}
+void handleLocationGet() {
+  if (!portalAuthCheck(server)) return;
+  Preferences p;
+  if (!p.begin("weather-loc", true)) { sendMessage(500, "Preferences unavailable"); return; }
+  String city = p.getString("city", "");
+  String country = p.getString("country", "");
+  float lat = p.getFloat("lat", 0);
+  float lon = p.getFloat("lon", 0);
+  String tz = p.getString("tz", "");
+  p.end();
+  String j = "{\"city\":\"" + escapeJson(city) + "\"";
+  j += ",\"country\":\"" + escapeJson(country) + "\"";
+  j += ",\"lat\":" + String(lat, 5);
+  j += ",\"lon\":" + String(lon, 5);
+  j += ",\"tz\":\"" + escapeJson(tz) + "\"";
+  j += ",\"offset\":" + String(timeGetTimezoneMinutes());
+  j += ",\"ntp\":\"" + escapeJson(timeGetNtpServer()) + "\"}";
+  server.send(200, "application/json", j);
+}
+void handleLocationSave() {
+  if (!portalAuthCheck(server)) return;
+  const char* required[] = {"city","country","lat","lon","tz","offset","ntp"};
+  for (const char* key : required)
+    if (!server.hasArg(key)) { sendMessage(400, String("Missing ") + key); return; }
+  String city = server.arg("city"), country = server.arg("country");
+  String tz = server.arg("tz"), ntp = server.arg("ntp");
+  float lat = server.arg("lat").toFloat(), lon = server.arg("lon").toFloat();
+  int offset = server.arg("offset").toInt();
+  if (city.length() == 0 || city.length() > 64 ||
+      country.length() == 0 || country.length() > 64 ||
+      tz.length() == 0 || tz.length() > 64 ||
+      ntp.length() == 0 || ntp.length() > 100 ||
+      !isfinite(lat) || !isfinite(lon) || lat < -90 || lat > 90 ||
+      lon < -180 || lon > 180 || offset < -720 || offset > 840) {
+    sendMessage(400, "Invalid city or time settings"); return;
+  }
+  Preferences p;
+  if (!p.begin("weather-loc", false)) { sendMessage(500, "Preferences unavailable"); return; }
+  p.putString("city", city);
+  p.putString("country", country);
+  p.putFloat("lat", lat);
+  p.putFloat("lon", lon);
+  p.putString("tz", tz);
+  p.end();
+  timeSetTimezoneMinutes(offset);
+  timeSetNtpServer(ntp);
+  sendMessage(200, "Location and NTP settings saved");
+}
+
 void handleSaveWiFi() {
+  if (!portalAuthCheck(server)) return;
   if (!server.hasArg("ssid")) { sendMessage(400, "Wi-Fi SSID is required."); return; }
   String ssid = server.arg("ssid");
   String password = server.arg("password");
@@ -419,7 +430,20 @@ void handleSaveWiFi() {
 
 void webPortalConfigure() {
   if (portalConfigured) return;
+  portalAuthBegin();
+  const char* headers[] = {"Cookie"};
+  server.collectHeaders(headers, 1);
   server.on("/", HTTP_GET, handleRoot);
+  server.on("/api/admin/status", HTTP_GET, handleAdminStatus);
+  server.on("/api/admin/login", HTTP_POST, handleAdminLogin);
+  server.on("/api/admin/change", HTTP_POST, handleAdminChange);
+  server.on("/api/admin/logout", HTTP_POST, handleAdminLogout);
+  server.on("/api/wifi/scan", HTTP_POST, handleWifiScanStart);
+  server.on("/api/wifi/scan", HTTP_GET, handleWifiScanResult);
+  server.on("/api/display", HTTP_GET, handleDisplayGet);
+  server.on("/api/display", HTTP_POST, handleDisplaySave);
+  server.on("/api/location", HTTP_GET, handleLocationGet);
+  server.on("/api/location", HTTP_POST, handleLocationSave);
   server.on("/api/status", HTTP_GET, handleStatus);
   server.on("/api/pump/start", HTTP_POST, handlePumpStart);
   server.on("/api/pump/stop", HTTP_POST, handlePumpStop);

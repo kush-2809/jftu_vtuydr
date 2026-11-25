@@ -134,7 +134,7 @@ $("securityForm").onsubmit=async e=>{
   e.preventDefault();try{await changePassword($("securityOld").value,$("securityNew").value,$("securityMsg"));$("securityForm").reset();}
   catch(err){$("securityMsg").textContent=err.message;}
 };
-$("logout").onclick=async()=>{await request("/api/admin/logout","POST").catch(()=>{});showAuth("login");};
+$("logout").onclick=async()=>{await request("/api/admin/logout","POST").catch(()=>{});displayDirty=false;showAuth("login");};
 function fmt(sec){
   sec=Math.max(0,Math.floor(Number(sec)||0));
   return [Math.floor(sec/3600),Math.floor((sec%3600)/60),sec%60].map(n=>String(n).padStart(2,"0")).join(":");
@@ -286,6 +286,12 @@ setInterval(()=>{
   loadDisplay();
  }
 },3000);
+document.addEventListener("visibilitychange",()=>{
+ if(!document.hidden&&!$("app").classList.contains("hidden")){
+  refresh();
+  loadDisplay();
+ }
+});
 authStatus();
 </script></body></html>
 )stportal";

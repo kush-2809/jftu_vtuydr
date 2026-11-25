@@ -182,11 +182,11 @@ void uiSystemInfoDraw() {
   }
   if(unlockY>=39&&unlockY<=H-30){
     canvas.setTextSize(1);canvas.setTextColor(t.muted,t.bg);
-    canvas.setCursor(8,unlockY);canvas.print("Unlock: rotate L-R-L-R, then press 5 times");
+    canvas.setCursor(8,unlockY);canvas.print("Unlock admin from phone portal");
   }
   uiDrawScrollIndicator(252-(H-24));
   canvas.fillRect(0,H-20,W,20,t.footerBg);
   canvas.setTextColor(t.fg,t.footerBg);canvas.setCursor(7,H-13);
-  canvas.print("ROTATE: SCROLL / ADMIN GESTURE  HOLD: BACK");
+  canvas.print("ROTATE: SCROLL   HOLD: BACK");
   canvas.pushSprite(0,0);
 }

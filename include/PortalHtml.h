@@ -78,7 +78,7 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <section id="network" class="page"><div class="panel"><h2>IP and hostname</h2><p class="muted">DHCP recommended. Changes apply after restarting SmartTank.</p><form id="networkForm"><label>IP assignment</label><select id="netdhcp"><option value="1">Automatic · DHCP</option><option value="0">Static IP</option></select><div id="staticFields" class="row"><div><label>Static IP</label><input id="netip" required></div><div><label>Gateway</label><input id="netgateway" required></div><div><label>Subnet mask</label><input id="netsubnet" required></div><div><label>DNS</label><input id="netdns" required></div></div><label>Hostname (without .local)</label><input id="nethost" maxlength="24" required><div class="row"><div><label>Setup AP IP</label><input id="netapip" required></div><div><label>Setup AP subnet</label><input id="netapsubnet" required></div></div><button type="submit">Save network configuration</button><div id="networkmsg" class="message"></div></form></div></section>
 <section id="location" class="page"><div class="panel"><h2>Local time and weather</h2><p class="muted">Choose your city and country. The location is saved on the ESP32; an online weather service supplies conditions, while NTP synchronizes the clock.</p>
 <form id="locationForm"><div class="row"><div><label>City</label><input id="city" maxlength="64" required placeholder="Lucknow"></div><div><label>Country</label><input id="country" maxlength="64" required placeholder="India"></div></div><label>NTP server</label><input id="ntp" maxlength="100" value="pool.ntp.org" required>
-<button type="submit">Find city and save time settings</button><div id="locationMsg" class="message"></div></form><div class="divider"></div><div class="weather"><div class="value" id="weatherTemperature">--°C</div><div><div id="weatherDescription">Weather unavailable</div><div class="muted" id="locationClock">--:--:--</div></div></div><div class="help">Weather needs internet access on the device viewing this webpage. It cannot be fetched via an offline-only setup hotspot. Time-zone offset is saved for the selected location; daylight-saving changes may need re-selection.</div></div></section>
+<button type="submit">Find city and save time settings</button><div id="locationMsg" class="message"></div></form><div class="divider"></div><div class="weather"><div class="value" id="weatherTemperature">--°C</div><div><div id="weatherDescription">Weather unavailable</div><div class="muted" id="locationClock">--:--:--</div><div class="muted" id="weatherDevice">Display weather: checking...</div></div></div><div class="help">Weather needs internet access on the device viewing this webpage. It cannot be fetched via an offline-only setup hotspot. Time-zone offset is saved for the selected location; daylight-saving changes may need re-selection.</div></div></section>
 <section id="security" class="page"><div class="panel"><h2>Administrator security</h2><p class="muted">The password verifier and session state live on the ESP32-S3. No admin password is embedded in HTML or JavaScript.</p>
 <form id="securityForm"><label>Current admin password</label><input id="securityOld" type="password" required autocomplete="current-password"><label>New password</label><input id="securityNew" type="password" minlength="10" maxlength="64" required autocomplete="new-password"><button type="submit">Change administrator password</button><div id="securityMsg" class="message"></div></form><div class="divider"></div><button id="logout" class="alt" type="button">Log out</button></div></section>
 <section id="configuration" class="page"><div class="panel">
@@ -300,6 +300,13 @@ $("scanBtn").onclick=async()=>{
 };
 async function loadLocation(){
  const d=await request("/api/location");loc=d;
+ try{
+  const w=await request("/api/weather");
+  $("weatherDevice").textContent="Display weather: "+w.status+
+    (w.valid?" · "+w.temperatureC+" °C":"");
+ }catch{
+  $("weatherDevice").textContent="Display weather status unavailable";
+ }
  $("city").value=d.city||"";$("country").value=d.country||"";$("ntp").value=d.ntp||"pool.ntp.org";
  $("weatherPlace").textContent=d.city?(d.city+", "+d.country):"Choose a city";
 }
@@ -319,6 +326,17 @@ async function weather(){
  $("temperature").textContent=t;$("weatherTemperature").textContent=t;
  $("weatherText").textContent=desc;$("weatherDescription").textContent=desc;
  $("weatherPlace").textContent=loc.city+", "+loc.country;weatherUpdated=Date.now();
+ // Browser online forecast can populate the ESP32 TFT even when the S3's
+ // independent HTTPS request fails (e.g. phone has mobile data).
+ try{
+  await request("/api/weather/sync","POST",{
+    lat:loc.lat,lon:loc.lon,
+    temperature:d.current.temperature_2m,code:d.current.weather_code
+  });
+  $("weatherDevice").textContent="Display weather: synced to ESP32-S3";
+ }catch(syncError){
+  $("weatherDevice").textContent="Display sync unavailable: "+syncError.message;
+ }
  }catch(err){weatherUpdated=Date.now();$("weatherText").textContent="Weather unavailable (internet required)";$("weatherDescription").textContent="Weather unavailable";}
 }
 $("locationForm").onsubmit=async e=>{

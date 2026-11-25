@@ -39,6 +39,7 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <button type="button" data-page="network">Network</button>
 <button type="button" data-page="location">Time & Weather</button>
 <button type="button" data-page="security">Security</button>
+<button type="button" data-page="configuration">Configuration <span aria-hidden="true">🔒</span></button>
 </nav>
 <section id="overview" class="page active">
 <div id="retryAlert" class="panel alert hidden" style="margin-bottom:14px">
@@ -80,6 +81,13 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <button type="submit">Find city and save time settings</button><div id="locationMsg" class="message"></div></form><div class="divider"></div><div class="weather"><div class="value" id="weatherTemperature">--°C</div><div><div id="weatherDescription">Weather unavailable</div><div class="muted" id="locationClock">--:--:--</div></div></div><div class="help">Weather needs internet access on the device viewing this webpage. It cannot be fetched via an offline-only setup hotspot. Time-zone offset is saved for the selected location; daylight-saving changes may need re-selection.</div></div></section>
 <section id="security" class="page"><div class="panel"><h2>Administrator security</h2><p class="muted">The password verifier and session state live on the ESP32-S3. No admin password is embedded in HTML or JavaScript.</p>
 <form id="securityForm"><label>Current admin password</label><input id="securityOld" type="password" required autocomplete="current-password"><label>New password</label><input id="securityNew" type="password" minlength="10" maxlength="64" required autocomplete="new-password"><button type="submit">Change administrator password</button><div id="securityMsg" class="message"></div></form><div class="divider"></div><button id="logout" class="alt" type="button">Log out</button></div></section>
+<section id="configuration" class="page"><div class="panel">
+<div class="eyebrow">PROTECTED SETTINGS</div><h2>Administrator access</h2>
+<p class="muted">Monitoring, telemetry and other portal tabs open without a password. Unlock here only when you need to save configuration or control the pump.</p>
+<div id="adminState" class="help">Administrator is locked</div>
+<div class="actions"><button type="button" id="unlockAdmin">Unlock configuration</button><button type="button" class="alt" id="lockAdmin">Lock administrator</button></div>
+<p class="muted">The initial password is changed on the first administrator login. Credentials are verified in ESP32 firmware.</p>
+</div></section>
 <footer>SmartTank · Local ESP32-S3 portal · Pump safety remains in firmware · Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" style="color:#73ddca">Open-Meteo</a></footer>
 </div></main>
 <script>
@@ -94,43 +102,64 @@ async function request(url,method,body){
   if(!res.ok)throw Error(txt||("HTTP "+res.status));
   try{return JSON.parse(txt);}catch{return txt;}
 }
+function syncAdminState(){
+ $("adminState").textContent=adminActive?
+  "Administrator unlocked · configuration changes enabled":
+  "Administrator locked · open Configuration to sign in";
+ $("unlockAdmin").textContent=adminActive?"Already unlocked":"Unlock configuration";
+}
+function showAuth(mode){
+ $("loginBox").classList.toggle("hidden",mode!=="login");
+ $("changeBox").classList.toggle("hidden",mode!=="change");
+ $("app").classList.remove("hidden");
+}
 function switchPage(id){
-  if(id!=="overview"&&!adminActive){
-    pendingPage=id;showAuth("login");return;
+ document.querySelectorAll(".page").forEach(el=>el.classList.toggle("active",el.id===id));
+ document.querySelectorAll("[data-page]").forEach(el=>el.classList.toggle("active",el.dataset.page===id));
+ if(id==="display")loadDisplay(true);
+ if(id==="network")loadNetwork().catch(()=>{});
+ if(id==="location")loadLocation().catch(()=>{});
+ if(id==="configuration") {
+  syncAdminState();
+  if(!adminActive){
+   pendingPage="configuration";
+   showAuth("login");
   }
-  document.querySelectorAll(".page").forEach(el=>el.classList.toggle("active",el.id===id));
-  document.querySelectorAll("[data-page]").forEach(el=>el.classList.toggle("active",el.dataset.page===id));
-  if(id==="display")loadDisplay(true);
-  if(id==="network")loadNetwork().catch(()=>{});
-  if(id==="location")loadLocation().catch(()=>{});
+ }
 }
 document.querySelectorAll("[data-page]").forEach(el=>el.onclick=()=>switchPage(el.dataset.page));
-function showAuth(mode){
-  $("loginBox").classList.toggle("hidden",mode!=="login");
-  $("changeBox").classList.toggle("hidden",mode!=="change");
-  $("app").classList.remove("hidden");
-}
+$("unlockAdmin").onclick=()=>{
+ if(adminActive)return;
+ pendingPage="configuration";showAuth("login");
+};
+$("lockAdmin").onclick=async()=>{
+ await request("/api/admin/logout","POST").catch(()=>{});
+ adminActive=false;syncAdminState();
+};
 function adminRequired(){
-  if(adminActive)return false;
-  pendingPage="overview";
-  showAuth("login");
-  return true;
+ if(adminActive)return false;
+ // Never request credentials outside the Configuration tab.
+ const hint="Unlock Configuration before changing settings.";
+ for(const id of ["pumpmsg","settingsmsg","displayMsg","wifiMsg","networkmsg","locationMsg","securityMsg","scanMsg"]){
+  if($(id))$(id).textContent=hint;
+ }
+ return true;
 }
 $("cancelLogin").onclick=()=>{showAuth("app");pendingPage="overview";};
 async function authStatus(){
-  showAuth("app");switchPage("overview");
-  try{
-    const d=await request("/api/admin/status");
-    adminActive=Boolean(d.authenticated&&!d.mustChange);
-    if(d.authenticated&&d.mustChange)showAuth("change");
-  }catch{adminActive=false;}
-  await Promise.allSettled([loadDisplay(true),loadLocation()]);
-  refresh();weather();
+ showAuth("app");
+ try {
+  const d=await request("/api/admin/status");
+  adminActive=Boolean(d.authenticated&&!d.mustChange);
+ }catch{adminActive=false;}
+ syncAdminState();
+ await Promise.allSettled([loadDisplay(true),loadLocation()]);
+ refresh();weather();
 }
 $("loginForm").onsubmit=async e=>{
   e.preventDefault();$("loginMsg").textContent="Checking credentials...";
   try{const d=await request("/api/admin/login","POST",{password:$("loginPass").value});
-    $("loginPass").value="";adminActive=!d.mustChange;showAuth(d.mustChange?"change":"app");
+    $("loginPass").value="";adminActive=!d.mustChange;showAuth(d.mustChange?"change":"app");syncAdminState();
     $("loginMsg").textContent="";
     if(!d.mustChange){switchPage(pendingPage);pendingPage="overview";refresh();weather();}
   }catch(err){$("loginMsg").textContent=err.message;}
@@ -143,14 +172,14 @@ $("changeForm").onsubmit=async e=>{
   e.preventDefault();
   if($("newPass").value!==$("confirmPass").value){$("changeMsg").textContent="Passwords do not match";return;}
   try{await changePassword($("oldPass").value,$("newPass").value,$("changeMsg"));
-    $("changeForm").reset();adminActive=true;showAuth("app");switchPage(pendingPage);pendingPage="overview";refresh();weather();
+    $("changeForm").reset();adminActive=true;showAuth("app");syncAdminState();switchPage(pendingPage);pendingPage="overview";refresh();weather();
   }catch(err){$("changeMsg").textContent=err.message;}
 };
 $("securityForm").onsubmit=async e=>{
   e.preventDefault();if(adminRequired())return;try{await changePassword($("securityOld").value,$("securityNew").value,$("securityMsg"));$("securityForm").reset();}
   catch(err){$("securityMsg").textContent=err.message;}
 };
-$("logout").onclick=async()=>{await request("/api/admin/logout","POST").catch(()=>{});adminActive=false;displayDirty=false;showAuth("app");switchPage("overview");};
+$("logout").onclick=async()=>{await request("/api/admin/logout","POST").catch(()=>{});adminActive=false;displayDirty=false;showAuth("app");syncAdminState();switchPage("overview");};
 function fmt(sec){
   sec=Math.max(0,Math.floor(Number(sec)||0));
   return [Math.floor(sec/3600),Math.floor((sec%3600)/60),sec%60].map(n=>String(n).padStart(2,"0")).join(":");

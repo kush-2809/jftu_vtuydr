@@ -7,6 +7,7 @@ void portalAuthBegin();
 bool portalAuthCheck(WebServer& server);
 bool portalAuthSessionValid(WebServer& server);
 bool portalAuthIsAuthenticated(WebServer& server);
+bool portalAuthLocalAdminOpen();
 bool portalAuthReady();
 bool portalAuthMustChange();
 bool portalAuthLogin(const String& password, String& session);

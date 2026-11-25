@@ -1,6 +1,5 @@
 #include "MenuModel.h"
 #include "Theme.h"
-#include "DashboardLayout.h"
 #include "FeatureControl.h"
 #include "PumpController.h"
 
@@ -11,7 +10,6 @@ static const MenuItem kMain[] = {
   {"Alarm", Page::Alarm},
   {"Display", Page::Display},
   {"Layout", Page::Layout},
-  {"Color Theme", Page::ThemeSelect},
   {"System Info", Page::SystemInfo},
   {"Management", Page::Management},
   {"Network", Page::Network},
@@ -30,15 +28,11 @@ static const MenuItem kDisplay[] = {
   {"Date & Time", Page::DisplayDateTime},
 };
 static const MenuItem kLayout[] = {
-  {"Aqua Phone", Page::Layout},
-  {"Compact", Page::Layout},
-};
-static const MenuItem kThemeChoices[] = {
-  {"Midnight (Dark)", Page::ThemeSelect},
-  {"Slate", Page::ThemeSelect},
-  {"Amber", Page::ThemeSelect},
-  {"Terminal", Page::ThemeSelect},
-  {"Daylight (Light)", Page::ThemeSelect},
+  {"Navy", Page::Layout},
+  {"Slate", Page::Layout},
+  {"Amber", Page::Layout},
+  {"Terminal", Page::Layout},
+  {"Light", Page::Layout},
 };
 static const MenuItem kManagement[] = {
   {"Operating Mode", Page::ManagementMode},
@@ -70,7 +64,6 @@ int menuItemCount(Page p) {
     case Page::Alarm: return sizeof(kAlarm) / sizeof(kAlarm[0]);
     case Page::Display: return sizeof(kDisplay) / sizeof(kDisplay[0]);
     case Page::Layout: return sizeof(kLayout) / sizeof(kLayout[0]);
-    case Page::ThemeSelect: return sizeof(kThemeChoices) / sizeof(kThemeChoices[0]);
     case Page::Management: return sizeof(kManagement) / sizeof(kManagement[0]);
     case Page::Network: return sizeof(kNetwork) / sizeof(kNetwork[0]);
     case Page::SystemClean: return sizeof(kClean) / sizeof(kClean[0]);
@@ -88,7 +81,6 @@ const MenuItem& menuItemAt(Page p, int i) {
     case Page::Alarm: items = kAlarm; count = sizeof(kAlarm) / sizeof(kAlarm[0]); break;
     case Page::Display: items = kDisplay; count = sizeof(kDisplay) / sizeof(kDisplay[0]); break;
     case Page::Layout: items = kLayout; count = sizeof(kLayout) / sizeof(kLayout[0]); break;
-    case Page::ThemeSelect: items = kThemeChoices; count = sizeof(kThemeChoices) / sizeof(kThemeChoices[0]); break;
     case Page::Management: items = kManagement; count = sizeof(kManagement) / sizeof(kManagement[0]); break;
     case Page::Network: items = kNetwork; count = sizeof(kNetwork) / sizeof(kNetwork[0]); break;
     case Page::SystemClean: items = kClean; count = sizeof(kClean) / sizeof(kClean[0]); break;
@@ -103,10 +95,6 @@ void menuActivate(Page p, int i) {
   const int count = menuItemCount(p);
   if (i < 0 || i >= count) return;
   if (p == Page::Layout) {
-    dashboardLayoutSet(static_cast<uint8_t>(i));
-    return;
-  }
-  if (p == Page::ThemeSelect) {
     themeSet(static_cast<uint8_t>(i));
     return;
   }

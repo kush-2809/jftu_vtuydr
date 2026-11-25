@@ -9,14 +9,15 @@ const char SMARTTANK_PORTAL_HTML[] PROGMEM = R"stportal(
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top right,#112e42,var(--bg) 55%);color:var(--text);min-height:100vh}main{max-width:1180px;margin:0 auto;padding:24px}
 h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17px;margin:0 0 14px}p{line-height:1.55}button,input,select{font:inherit}button{cursor:pointer;background:var(--accent);color:#052324;border:0;border-radius:10px;padding:11px 16px;font-weight:700}button:hover{filter:brightness(1.13)}button:disabled{opacity:.5;cursor:wait}button.alt{background:#2b4459;color:var(--text)}button.danger{background:#a94855;color:#fff}input,select{display:block;width:100%;padding:11px 12px;margin:6px 0 15px;border-radius:10px;border:1px solid #38556b;background:#091727;color:var(--text);min-width:0}input:focus,select:focus{outline:2px solid var(--accent)}label{font-size:13px;color:#c1d3e0}small,.muted{font-size:13px;color:var(--muted)}.panel{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:20px;min-width:0}.top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px}.eyebrow{font-size:11px;font-weight:800;letter-spacing:.17em;color:var(--accent)}.chip{border-radius:99px;border:1px solid #296754;background:#163b37;padding:9px 13px;font-size:12px;color:#8ae7c9}.nav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}.nav button{background:#162b3d;color:#b8d1df;border:1px solid var(--border)}.nav button.active{color:#082323;background:var(--accent)}.page{display:none}.page.active{display:block}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}.grid .span2{grid-column:span 2}.value{font-size:clamp(25px,4vw,36px);font-weight:800;letter-spacing:-.04em;margin:8px 0}.accent{color:var(--accent)}.muted{overflow-wrap:anywhere}.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin:9px 0}.alert{background:#442131;border-color:#a64b5e}.alert strong{color:#ffb6bd}.count{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}.network{width:100%;display:flex;align-items:center;justify-content:space-between;gap:15px;margin:5px 0;background:var(--panel2);color:var(--text);text-align:left}.network small{white-space:nowrap}.hidden,[hidden]{display:none!important}.auth{max-width:460px;margin:8vh auto}.message{min-height:20px;margin:8px 0;color:var(--muted);font-size:13px}.help{padding:12px;background:#1b3444;border-radius:9px;font-size:13px;color:#bfd6e0;margin:8px 0}.divider{height:1px;background:var(--border);margin:19px 0}.weather{display:flex;align-items:center;gap:10px}.weather .value{margin:0}footer{font-size:12px;color:var(--muted);margin-top:20px}
 @media(max-width:880px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:540px){main{padding:10px}.top{align-items:flex-start;padding:16px}.grid{grid-template-columns:minmax(0,1fr)}.grid .span2{grid-column:auto}.row{grid-template-columns:minmax(0,1fr);gap:0}.panel{padding:16px;border-radius:14px}.nav{flex-wrap:nowrap;overflow:auto}.nav button{white-space:nowrap}button{min-height:42px}}
+.auth{position:fixed;z-index:20;top:50%;left:50%;transform:translate(-50%,-50%);width:min(94vw,460px);margin:0;box-shadow:0 0 0 200vmax #020a12cc,0 28px 80px #000a}
 </style></head><body><main>
-<section id="loginBox" class="panel auth">
+<section id="loginBox" class="panel auth hidden" role="dialog" aria-label="Administrator unlock">
 <div class="eyebrow">SMART HOME · WATER MANAGEMENT</div><h1>SmartTank</h1>
 <p class="muted">Sign in to configure your controller.</p>
 <form id="loginForm"><label for="loginPass">Administrator password</label>
 <input id="loginPass" type="password" required autocomplete="current-password" minlength="8">
 <button type="submit">Unlock control center</button></form>
-<div id="loginMsg" class="message"></div>
+<div id="loginMsg" class="message"></div><button id="cancelLogin" class="alt" type="button">Back to monitoring</button>
 <small>The administrator credential is verified on the ESP32-S3, not in this webpage.</small>
 </section>
 <section id="changeBox" class="panel auth hidden">
@@ -28,7 +29,7 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <label>Confirm new password</label><input id="confirmPass" type="password" minlength="10" maxlength="64" autocomplete="new-password" required>
 <button type="submit">Save new password</button></form><div id="changeMsg" class="message"></div>
 </section>
-<div id="app" class="hidden">
+<div id="app">
 <header class="top panel"><div><div class="eyebrow">SMART HOME · WATER MANAGEMENT</div><h1>SmartTank</h1><div class="muted">Local water monitoring & control</div></div>
 <div style="text-align:right"><div class="chip" id="net">Connecting…</div><div class="muted" id="clock" style="margin-top:8px">--:--:--</div></div></header>
 <nav class="nav" aria-label="Sections">
@@ -84,6 +85,7 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <script>
 "use strict";
 const $=id=>document.getElementById(id);
+let adminActive=false, pendingPage="overview";
 let loc={city:"",country:"",lat:0,lon:0,tz:"",offset:330}, weatherUpdated=0;
 async function request(url,method,body){
   const opts={method:method||"GET",cache:"no-store",credentials:"same-origin",headers:{}};
@@ -93,30 +95,44 @@ async function request(url,method,body){
   try{return JSON.parse(txt);}catch{return txt;}
 }
 function switchPage(id){
+  if(id!=="overview"&&!adminActive){
+    pendingPage=id;showAuth("login");return;
+  }
   document.querySelectorAll(".page").forEach(el=>el.classList.toggle("active",el.id===id));
   document.querySelectorAll("[data-page]").forEach(el=>el.classList.toggle("active",el.dataset.page===id));
+  if(id==="display")loadDisplay(true);
+  if(id==="network")loadNetwork().catch(()=>{});
+  if(id==="location")loadLocation().catch(()=>{});
 }
 document.querySelectorAll("[data-page]").forEach(el=>el.onclick=()=>switchPage(el.dataset.page));
-// Refresh immediately on return to Display, unless a form edit is pending.
-document.querySelector('[data-page="display"]').addEventListener("click",()=>loadDisplay());
 function showAuth(mode){
   $("loginBox").classList.toggle("hidden",mode!=="login");
   $("changeBox").classList.toggle("hidden",mode!=="change");
-  $("app").classList.toggle("hidden",mode!=="app");
+  $("app").classList.remove("hidden");
 }
+function adminRequired(){
+  if(adminActive)return false;
+  pendingPage="overview";
+  showAuth("login");
+  return true;
+}
+$("cancelLogin").onclick=()=>{showAuth("app");pendingPage="overview";};
 async function authStatus(){
+  showAuth("app");switchPage("overview");
   try{
     const d=await request("/api/admin/status");
-    showAuth(d.authenticated?(d.mustChange?"change":"app"):"login");
-    if(d.authenticated&&!d.mustChange){await Promise.allSettled([loadDisplay(),loadNetwork(),loadLocation()]);refresh();weather();}
-  }catch{showAuth("login");}
+    adminActive=Boolean(d.authenticated&&!d.mustChange);
+    if(d.authenticated&&d.mustChange)showAuth("change");
+  }catch{adminActive=false;}
+  await Promise.allSettled([loadDisplay(true),loadLocation()]);
+  refresh();weather();
 }
 $("loginForm").onsubmit=async e=>{
   e.preventDefault();$("loginMsg").textContent="Checking credentials...";
   try{const d=await request("/api/admin/login","POST",{password:$("loginPass").value});
-    $("loginPass").value="";showAuth(d.mustChange?"change":"app");
+    $("loginPass").value="";adminActive=!d.mustChange;showAuth(d.mustChange?"change":"app");
     $("loginMsg").textContent="";
-    if(!d.mustChange){await Promise.allSettled([loadDisplay(),loadNetwork(),loadLocation()]);refresh();weather();}
+    if(!d.mustChange){switchPage(pendingPage);pendingPage="overview";refresh();weather();}
   }catch(err){$("loginMsg").textContent=err.message;}
 };
 async function changePassword(oldp,newp,target){
@@ -127,14 +143,14 @@ $("changeForm").onsubmit=async e=>{
   e.preventDefault();
   if($("newPass").value!==$("confirmPass").value){$("changeMsg").textContent="Passwords do not match";return;}
   try{await changePassword($("oldPass").value,$("newPass").value,$("changeMsg"));
-    $("changeForm").reset();showAuth("app");await Promise.allSettled([loadDisplay(),loadNetwork(),loadLocation()]);refresh();weather();
+    $("changeForm").reset();adminActive=true;showAuth("app");switchPage(pendingPage);pendingPage="overview";refresh();weather();
   }catch(err){$("changeMsg").textContent=err.message;}
 };
 $("securityForm").onsubmit=async e=>{
-  e.preventDefault();try{await changePassword($("securityOld").value,$("securityNew").value,$("securityMsg"));$("securityForm").reset();}
+  e.preventDefault();if(adminRequired())return;try{await changePassword($("securityOld").value,$("securityNew").value,$("securityMsg"));$("securityForm").reset();}
   catch(err){$("securityMsg").textContent=err.message;}
 };
-$("logout").onclick=async()=>{await request("/api/admin/logout","POST").catch(()=>{});displayDirty=false;showAuth("login");};
+$("logout").onclick=async()=>{await request("/api/admin/logout","POST").catch(()=>{});adminActive=false;displayDirty=false;showAuth("app");switchPage("overview");};
 function fmt(sec){
   sec=Math.max(0,Math.floor(Number(sec)||0));
   return [Math.floor(sec/3600),Math.floor((sec%3600)/60),sec%60].map(n=>String(n).padStart(2,"0")).join(":");
@@ -162,6 +178,7 @@ async function refresh(){
   }catch(err){$("net").textContent="Connection lost";}
 }
 async function act(path,body,msg){
+ if(adminRequired())return;
  try{msg.textContent=await request(path,"POST",body||{});refresh();}
  catch(err){msg.textContent="Error: "+err.message;}
 }
@@ -169,7 +186,7 @@ $("pumpStart").onclick=()=>act("/api/pump/start",{},$("pumpmsg"));
 $("pumpStop").onclick=()=>act("/api/pump/stop",{},$("pumpmsg"));
 $("autoOn").onclick=()=>act("/api/auto",{enabled:"1"},$("pumpmsg"));
 $("autoOff").onclick=()=>act("/api/auto",{enabled:"0"},$("pumpmsg"));
-$("tankForm").onsubmit=e=>{e.preventDefault();const o={on:$("on").value,off:$("off").value,minutes:$("mins").value,height:$("height").value,capacity:$("capacity").value};act("/api/settings",o,$("settingsmsg"));};
+$("tankForm").onsubmit=e=>{e.preventDefault();if(adminRequired())return;const o={on:$("on").value,off:$("off").value,minutes:$("mins").value,height:$("height").value,capacity:$("capacity").value};act("/api/settings",o,$("settingsmsg"));};
 // The ESP32 is authoritative. Editing a form temporarily pauses sync so
 // background reads never replace values the user is currently entering.
 let displayDirty=false;
@@ -197,7 +214,7 @@ async function loadDisplay(force=false){
  }finally{displayLoading=false;}
 }
 $("displayForm").onsubmit=async e=>{
- e.preventDefault();
+ e.preventDefault();if(adminRequired())return;
  const o={};
  for(const id of ["rotation","theme","timeout","dim","brightness","buzzer","sleepStart","sleepEnd"])
   o[id]=$(id).value;
@@ -217,10 +234,11 @@ async function loadNetwork(){const d=await request("/api/network-config");
  for(const id of ["ip","gateway","subnet","dns","hostname","apip","apsubnet"]){const ui={ip:"netip",gateway:"netgateway",subnet:"netsubnet",dns:"netdns",hostname:"nethost",apip:"netapip",apsubnet:"netapsubnet"};$(ui[id]).value=d[id];}
  toggleStatic();
 }
-$("networkForm").onsubmit=e=>{e.preventDefault();const o={dhcp:$("netdhcp").value,ip:$("netip").value,gateway:$("netgateway").value,subnet:$("netsubnet").value,dns:$("netdns").value,hostname:$("nethost").value,apip:$("netapip").value,apsubnet:$("netapsubnet").value};act("/api/network-config",o,$("networkmsg"));};
-$("wifiForm").onsubmit=e=>{e.preventDefault();act("/save",{ssid:$("wifiSSID").value,password:$("wifiPassword").value},$("wifiMsg"));};
+$("networkForm").onsubmit=e=>{e.preventDefault();if(adminRequired())return;const o={dhcp:$("netdhcp").value,ip:$("netip").value,gateway:$("netgateway").value,subnet:$("netsubnet").value,dns:$("netdns").value,hostname:$("nethost").value,apip:$("netapip").value,apsubnet:$("netapsubnet").value};act("/api/network-config",o,$("networkmsg"));};
+$("wifiForm").onsubmit=e=>{e.preventDefault();if(adminRequired())return;act("/save",{ssid:$("wifiSSID").value,password:$("wifiPassword").value},$("wifiMsg"));};
 function wifiLabel(rssi){return rssi>=-60?"Excellent":rssi>=-70?"Good":rssi>=-80?"Fair":"Weak";}
 $("scanBtn").onclick=async()=>{
+ if(adminRequired())return;
  const btn=$("scanBtn");btn.disabled=true;$("wifiNetworks").replaceChildren();$("scanMsg").textContent="Scanning...";
  try{await request("/api/wifi/scan","POST",{});let done=false;
   for(let i=0;i<30;i++){await new Promise(resolve=>setTimeout(resolve,650));const d=await request("/api/wifi/scan");
@@ -264,7 +282,7 @@ async function weather(){
  }catch(err){weatherUpdated=Date.now();$("weatherText").textContent="Weather unavailable (internet required)";$("weatherDescription").textContent="Weather unavailable";}
 }
 $("locationForm").onsubmit=async e=>{
- e.preventDefault();$("locationMsg").textContent="Finding city and its time zone...";
+ e.preventDefault();if(adminRequired())return;$("locationMsg").textContent="Finding city and its time zone...";
  try{
  const query=$("city").value.trim()+", "+$("country").value.trim();
  const u="https://geocoding-api.open-meteo.com/v1/search?name="+encodeURIComponent($("city").value.trim())+"&count=10&language=en";

@@ -6,7 +6,7 @@ enum class Page : uint8_t {
   Telemetry,
   Alarm, AlarmTimer, AlarmScheduler, AlarmSleep,
   Display, DisplayTimeout, DisplayDim, DisplayDateTime, DisplayNTP,
-  Layout, SystemInfo, Management, Network, SystemClean,
+  Layout, ThemeSelect, SystemInfo, Management, Network, SystemClean,
   SystemRetry, AdminConfig,
   ManagementMode, ManagementBuzzer, ManagementRotation,
   NetworkStatus, NetworkWiFi,

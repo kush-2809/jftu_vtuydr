@@ -19,6 +19,7 @@
 #include "Buzzer.h"
 #include "Scheduler.h"
 #include "TimeService.h"
+#include "WeatherService.h"
 #include <Preferences.h>
 
 namespace {
@@ -388,6 +389,35 @@ void handleLocationGet() {
   j += ",\"ntp\":\"" + escapeJson(timeGetNtpServer()) + "\"}";
   server.send(200, "application/json", j);
 }
+void handleWeatherStatus() {
+  const WeatherSnapshot w = weatherServiceSnapshot();
+  String j = "{";
+  j += "\"valid\":" + String(w.valid ? "true" : "false");
+  j += ",\"temperatureC\":" + String(w.temperatureC, 1);
+  j += ",\"weatherCode\":" + String(w.weatherCode);
+  j += ",\"city\":\"" + escapeJson(String(w.city)) + "\"";
+  j += ",\"status\":\"" + escapeJson(String(w.status)) + "\"";
+  j += ",\"ageSeconds\":" + String(w.valid ? (millis() - w.updatedAtMs) / 1000UL : 0);
+  j += "}";
+  server.send(200, "application/json", j);
+}
+void handleWeatherPortalSync() {
+  // Informational weather only, validated against the stored city coordinates.
+  // Never changes sensor values, NTP, pump state or other control settings.
+  if (!server.hasArg("lat") || !server.hasArg("lon") ||
+      !server.hasArg("temperature") || !server.hasArg("code")) {
+    sendMessage(400, "Weather fields missing"); return;
+  }
+  const float lat = server.arg("lat").toFloat();
+  const float lon = server.arg("lon").toFloat();
+  const float temperature = server.arg("temperature").toFloat();
+  const int code = server.arg("code").toInt();
+  if (!weatherServiceAcceptPortal(lat, lon, temperature, code)) {
+    sendMessage(400, "Weather/location mismatch"); return;
+  }
+  sendMessage(200, "Weather synced to TFT");
+}
+
 void handleLocationSave() {
   if (!portalAuthCheck(server)) return;
   const char* required[] = {"city","country","lat","lon","tz","offset","ntp"};
@@ -447,6 +477,8 @@ void webPortalConfigure() {
   server.on("/api/display", HTTP_GET, handleDisplayGet);
   server.on("/api/display", HTTP_POST, handleDisplaySave);
   server.on("/api/location", HTTP_GET, handleLocationGet);
+  server.on("/api/weather", HTTP_GET, handleWeatherStatus);
+  server.on("/api/weather/sync", HTTP_POST, handleWeatherPortalSync);
   server.on("/api/location", HTTP_POST, handleLocationSave);
   server.on("/api/status", HTTP_GET, handleStatus);
   server.on("/api/pump/start", HTTP_POST, handlePumpStart);

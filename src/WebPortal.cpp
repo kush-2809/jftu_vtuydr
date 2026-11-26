@@ -153,6 +153,14 @@ void handleSettings() {
 // Everyday Settings tab: intentionally separate from administrator calibration.
 // Restricted to ON/OFF percentages and manual override duration only.
 void handleOperatingSettings() {
+  // This narrowly scoped local Settings route intentionally does not need
+  // the admin password. A custom header blocks ordinary cross-site HTML
+  // form submissions and cross-origin fetch without a successful preflight.
+  if (!server.hasHeader("X-SmartTank-Settings") ||
+      server.header("X-SmartTank-Settings") != "1") {
+    sendMessage(403, "Open SmartTank Settings to change operating limits.");
+    return;
+  }
   if (!server.hasArg("on") || !server.hasArg("off") || !server.hasArg("minutes")) {
     sendMessage(400, "Auto thresholds and override minutes are required."); return;
   }
@@ -500,8 +508,8 @@ void handleSaveWiFi() {
 void webPortalConfigure() {
   if (portalConfigured) return;
   portalAuthBegin();
-  const char* headers[] = {"Cookie"};
-  server.collectHeaders(headers, 1);
+  const char* headers[] = {"Cookie", "X-SmartTank-Settings"};
+  server.collectHeaders(headers, 2);
   server.on("/", HTTP_GET, handleRoot);
   server.on("/api/admin/status", HTTP_GET, handleAdminStatus);
   server.on("/api/admin/login", HTTP_POST, handleAdminLogin);

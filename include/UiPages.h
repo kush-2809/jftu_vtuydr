@@ -18,6 +18,10 @@ void uiDisplayNTPTick();
 void uiTelemetryDraw();
 void uiTelemetryTick();
 
+void uiManagementThresholdsDraw();
+void uiManagementThresholdsTick();
+void uiManagementOverrideDraw();
+void uiManagementOverrideTick();
 void uiManagementModeDraw();
 void uiManagementModeTick();
 void uiManagementBuzzerDraw();

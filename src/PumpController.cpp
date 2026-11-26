@@ -135,6 +135,14 @@ void initializeManualPump() {
 // ==========================================
 // MANUAL OVERRIDE
 // ==========================================
+uint32_t manualOverrideRemainingSeconds() {
+  if (!manualOverrideActive || !manualPumpState) return 0;
+  const uint32_t durationMs = (uint32_t)manualOverrideMinutes * 60000UL;
+  const uint32_t elapsedMs = (uint32_t)(millis() - manualOverrideStartedAt);
+  if (elapsedMs >= durationMs) return 0;
+  // Round upward so the visible countdown never shows 00:00 while running.
+  return (durationMs - elapsedMs + 999UL) / 1000UL;
+}
 void startManualOverride() {
   if (!managementAllowsManual()) return;
   // featureTouchEnabled gates only the TTP223 input path. Manual control
@@ -197,10 +205,8 @@ uint8_t pumpRetryManualHour() { return manualRetryHour; }
 uint8_t pumpRetryManualMinute() { return manualRetryMinute; }
 
 bool pumpRetryWarningActive() {
-  // The initial fill plus three unsuccessful retries equals four failed
-  // attempts. The warning then remains latched through automatic retries.
-  return failedAttempts >= 4 && !manualRetryEnabled &&
-         !manualRetryAttemptActive;
+  // Warn after the first failed attempt, including scheduled manual retries.
+  return failedAttempts > 0 && autoPumpState == AUTO_RETRY_WAIT;
 }
 
 uint32_t pumpRetryRemainingSeconds() {

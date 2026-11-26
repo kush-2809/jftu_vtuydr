@@ -9,6 +9,7 @@ enum class Page : uint8_t {
   Layout, SystemInfo, Management, Network, SystemClean,
   SystemRetry, AdminConfig,
   ManagementMode, ManagementBuzzer, ManagementRotation,
+  ManagementThresholds, ManagementOverride,
   NetworkStatus, NetworkWiFi,
   CleanReboot, CleanClearCache, CleanFactoryReset,
   AdminTankHeight, AdminTankCapacity, AdminThresholds,

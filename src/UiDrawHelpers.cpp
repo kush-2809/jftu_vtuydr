@@ -29,51 +29,87 @@ static String menuItemState(Page page, int index) {
 }
 
 void uiMenuDraw(const char* title, int /*unused*/) {
-  const Theme& t=themeGet();
-  const Page page=uiPage();
+  const Theme& t = themeGet();
+  const Page page = uiPage();
+  const bool wide = W > H;
+  const int topH = 37;
+
   canvas.fillSprite(t.bg);
-  canvas.fillRect(0,0,W,36,t.headerBg);
-  canvas.setTextSize(2);canvas.setTextColor(t.accent,t.headerBg);
-  canvas.setCursor(8,10);canvas.print(title);
-  canvas.fillRect(0,36,W,2,t.accent);
+  canvas.fillRoundRect(7, 3, W - 14, 32, 8, t.headerBg);
+  canvas.fillRoundRect(7, 3, 4, 32, 2, t.accent);
+  canvas.setTextSize(1);
+  canvas.setTextColor(t.accent, t.headerBg);
+  canvas.setCursor(18, 9);
+  canvas.print("SMARTTANK / MENU");
+  canvas.setTextColor(t.fg, t.headerBg);
+  canvas.setCursor(18, 21);
+  canvas.print(title);
 
-  const int n=menuItemCount(page),sel=uiMenuIndex();
-  const int rowTop=43,rowBottom=H-23,rowHeight=W>H?28:34;
-  int visible=(rowBottom-rowTop)/rowHeight;
-  if(visible<1)visible=1;
-  if(visible>n)visible=n;
-  int first=sel>=visible?sel-visible+1:0;
-  if(first+visible>n)first=n>visible?n-visible:0;
+  const int count = menuItemCount(page);
+  const int selected = uiMenuIndex();
+  const int rowTop = topH + 7;
+  const int rowHeight = wide ? 29 : 34;
+  const int rowBottom = H - 24;
+  int visible = (rowBottom - rowTop) / rowHeight;
+  if (visible < 1) visible = 1;
+  if (visible > count) visible = count;
 
-  for(int slot=0;slot<visible&&first+slot<n;++slot){
-    const int index=first+slot,y=rowTop+slot*rowHeight,rowH=rowHeight-4;
-    const bool selected=index==sel;
-    if(selected)drawSelectedRow(8,y,W-16,rowH);
-    const bool locked=page==Page::MainMenu&&menuItemAt(page,index).target==Page::AdminConfig&&!adminUnlocked();
-    canvas.setTextSize(2);
-    canvas.setTextColor(selected?t.selFg:(locked?t.muted:t.fg),selected?t.selBg:t.bg);
-    canvas.setCursor(selected?19:14,y+(rowH-16)/2);
-    canvas.print(menuItemAt(page,index).label);
-    String state=menuItemState(page,index);
-    if(locked)state="LOCKED";
-    if(state.length()){
-      canvas.setTextSize(1);
-      canvas.setTextColor(selected?t.selFg:t.muted,selected?t.selBg:t.bg);
-      canvas.setCursor(W-66,y+(rowH-8)/2);canvas.print(state);
+  int first = selected >= visible ? selected - visible + 1 : 0;
+  if (first + visible > count)
+    first = count > visible ? count - visible : 0;
+
+  for (int slot = 0; slot < visible; ++slot) {
+    const int index = first + slot;
+    const int y = rowTop + slot * rowHeight;
+    const int h = rowHeight - 4;
+    const bool active = index == selected;
+
+    canvas.fillRoundRect(9, y, W - 18, h, 7, active ? t.selBg : t.panel);
+    canvas.drawRoundRect(9, y, W - 18, h, 7, active ? t.accent : t.selBg);
+    if (active) canvas.fillRoundRect(9, y, 4, h, 2, t.accent);
+
+    const bool locked = page == Page::MainMenu &&
+        menuItemAt(page, index).target == Page::AdminConfig &&
+        !adminUnlocked();
+    String item(menuItemAt(page, index).label);
+    String state = menuItemState(page, index);
+    if (locked) state = "LOCKED";
+    const int stateW = state.length() ? (int)state.length() * 6 + 12 : 0;
+    const int availableChars = (W - 38 - stateW) / 6;
+    if (availableChars >= 4 && (int)item.length() > availableChars)
+      item = item.substring(0, availableChars - 2) + "..";
+
+    canvas.setTextSize(1);
+    canvas.setTextColor(active ? t.selFg : (locked ? t.muted : t.fg),
+                        active ? t.selBg : t.panel);
+    canvas.setCursor(20, y + (h - 8) / 2);
+    canvas.print(item);
+
+    if (state.length()) {
+      canvas.setTextColor(active ? t.selFg : t.muted,
+                          active ? t.selBg : t.panel);
+      canvas.setCursor(W - stateW - 12, y + (h - 8) / 2);
+      canvas.print(state);
     }
   }
-  if(n>visible&&visible>0){
-    const int trackY=rowTop,trackH=visible*rowHeight-4;
-    canvas.drawFastVLine(W-3,trackY,trackH,t.muted);
-    int thumbH=(trackH*visible)/n;if(thumbH<8)thumbH=8;
-    const int maxFirst=n-visible;
-    const int thumbY=trackY+(maxFirst>0?(trackH-thumbH)*first/maxFirst:0);
-    canvas.fillRect(W-4,thumbY,3,thumbH,t.accent);
+
+  if (count > visible && visible > 0) {
+    const int trackY = rowTop, trackH = visible * rowHeight - 4;
+    canvas.drawFastVLine(W - 5, trackY, trackH, t.muted);
+    int thumbH = (trackH * visible) / count;
+    if (thumbH < 8) thumbH = 8;
+    const int last = count - visible;
+    const int thumbY = trackY + (last > 0 ?
+        (trackH - thumbH) * first / last : 0);
+    canvas.fillRoundRect(W - 6, thumbY, 3, thumbH, 1, t.accent);
   }
-  canvas.fillRect(0,H-20,W,20,t.footerBg);
-  canvas.setTextSize(1);canvas.setTextColor(t.fg,t.footerBg);
-  canvas.setCursor(7,H-13);canvas.print("ROTATE: MOVE  PRESS: SELECT  HOLD: BACK");
-  canvas.pushSprite(0,0);
+  canvas.fillRect(0, H - 20, W, 20, t.footerBg);
+  canvas.drawFastHLine(0, H - 20, W, t.selBg);
+  canvas.setTextSize(1);
+  canvas.setTextColor(t.fg, t.footerBg);
+  canvas.setCursor(8, H - 13);
+  canvas.print("TURN: MOVE  CLICK: OPEN  HOLD: BACK");
+  canvas.pushSprite(0, 0);
 }
 
 void uiPlaceholderDraw(const char* title, const char* line) {
@@ -146,11 +182,11 @@ void uiSystemInfoDraw() {
   }
   if(unlockY>=39&&unlockY<=H-30){
     canvas.setTextSize(1);canvas.setTextColor(t.muted,t.bg);
-    canvas.setCursor(8,unlockY);canvas.print("Unlock: rotate L-R-L-R, then press 5 times");
+    canvas.setCursor(8,unlockY);canvas.print("Unlock admin from phone portal");
   }
   uiDrawScrollIndicator(252-(H-24));
   canvas.fillRect(0,H-20,W,20,t.footerBg);
   canvas.setTextColor(t.fg,t.footerBg);canvas.setCursor(7,H-13);
-  canvas.print("ROTATE: SCROLL / ADMIN GESTURE  HOLD: BACK");
+  canvas.print("ROTATE: SCROLL   HOLD: BACK");
   canvas.pushSprite(0,0);
 }

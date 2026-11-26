@@ -1,0 +1,776 @@
+#pragma once
+#include <Arduino.h>
+const char SMARTTANK_PORTAL_HTML[] PROGMEM = R"stportal(
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#081320"><title>SmartTank · Control Center</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/favicon.png">
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:dark;--bg:#081320;--panel:#111f30;--panel2:#182c42;--border:#2a4055;--text:#edf6fb;--muted:#94aabe;--accent:#19c9b2;--red:#f57886;--amber:#f8bd67}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top right,#112e42,var(--bg) 55%);color:var(--text);min-height:100vh}main{max-width:1180px;margin:0 auto;padding:24px}
+h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17px;margin:0 0 14px}p{line-height:1.55}button,input,select{font:inherit}button{cursor:pointer;background:var(--accent);color:#052324;border:0;border-radius:10px;padding:11px 16px;font-weight:700}button:hover{filter:brightness(1.13)}button:disabled{opacity:.5;cursor:wait}button.alt{background:#2b4459;color:var(--text)}button.danger{background:#a94855;color:#fff}input,select{display:block;width:100%;padding:11px 12px;margin:6px 0 15px;border-radius:10px;border:1px solid #38556b;background:#091727;color:var(--text);min-width:0}input:focus,select:focus{outline:2px solid var(--accent)}label{font-size:13px;color:#c1d3e0}small,.muted{font-size:13px;color:var(--muted)}.panel{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:20px;min-width:0}.top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px}.eyebrow{font-size:11px;font-weight:800;letter-spacing:.17em;color:var(--accent)}.chip{border-radius:99px;border:1px solid #296754;background:#163b37;padding:9px 13px;font-size:12px;color:#8ae7c9}.nav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}.nav button{background:#162b3d;color:#b8d1df;border:1px solid var(--border)}.nav button.active{color:#082323;background:var(--accent)}.page{display:none}.page.active{display:block}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}.grid .span2{grid-column:span 2}.value{font-size:clamp(25px,4vw,36px);font-weight:800;letter-spacing:-.04em;margin:8px 0}.accent{color:var(--accent)}.muted{overflow-wrap:anywhere}.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin:9px 0}.alert{background:#442131;border-color:#a64b5e}.alert strong{color:#ffb6bd}.count{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}.network{width:100%;display:flex;align-items:center;justify-content:space-between;gap:15px;margin:5px 0;background:var(--panel2);color:var(--text);text-align:left}.network small{white-space:nowrap}.hidden,[hidden]{display:none!important}.auth{max-width:460px;margin:8vh auto}.message{min-height:20px;margin:8px 0;color:var(--muted);font-size:13px}.help{padding:12px;background:#1b3444;border-radius:9px;font-size:13px;color:#bfd6e0;margin:8px 0}.divider{height:1px;background:var(--border);margin:19px 0}.weather{display:flex;align-items:center;gap:10px}.weather .value{margin:0}footer{font-size:12px;color:var(--muted);margin-top:20px}
+@media(max-width:880px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:540px){main{padding:10px}.top{align-items:flex-start;padding:16px}.grid{grid-template-columns:minmax(0,1fr)}.grid .span2{grid-column:auto}.row{grid-template-columns:minmax(0,1fr);gap:0}.panel{padding:16px;border-radius:14px}.nav{flex-wrap:nowrap;overflow:auto}.nav button{white-space:nowrap}button{min-height:42px}}
+.auth{position:fixed;z-index:20;top:50%;left:50%;transform:translate(-50%,-50%);width:min(94vw,460px);margin:0;box-shadow:0 0 0 200vmax #020a12cc,0 28px 80px #000a}
+
+/* Fluid tank visualizations are deliberately CSS-only: no images or canvas
+   bandwidth required on the ESP32 captive portal. */
+.tank-stage{display:flex;align-items:center;justify-content:center;gap:22px;flex-wrap:wrap;padding:12px 0 6px}
+.tank-shell{--fill:0%;position:relative;width:144px;height:215px;border:5px solid #6b9db7;border-radius:22px 22px 28px 28px;background:linear-gradient(110deg,#0d2636 5%,#16374a 35%,#091a29 100%);box-shadow:inset 7px 0 20px #a1e9ff15,inset -11px 0 17px #00101c91,0 18px 34px #0005;isolation:isolate;overflow:hidden;flex:none}
+.tank-shell:before{content:"";position:absolute;inset:7px auto 7px 9px;width:10px;background:linear-gradient(90deg,#ffffff45,#ffffff03);border-radius:16px;z-index:4;pointer-events:none}
+.tank-shell:after{content:"";position:absolute;inset:8px 9px 8px auto;width:3px;background:#9ceaff48;border-radius:7px;z-index:4;pointer-events:none}
+.tank-cap{position:absolute;top:-5px;left:24%;width:52%;height:9px;background:#80b6cc;border-radius:0 0 8px 8px;z-index:6}
+.tank-water{position:absolute;left:0;right:0;bottom:0;height:var(--fill);background:linear-gradient(180deg,#4edce6,#1182c4 38%,#10559c 100%);transition:height 900ms cubic-bezier(.25,.8,.25,1);z-index:1}
+.tank-water:before,.tank-water:after{content:"";position:absolute;left:-25%;width:150%;height:17px;border-radius:45%;top:-8px;background:#91f8f8b5;animation:tank-sway 3.2s ease-in-out infinite alternate}
+.tank-water:after{top:-4px;background:#30c9e8b5;animation-duration:2.3s;animation-direction:alternate-reverse}
+.tank-ruler{position:absolute;inset:15px 9px;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none;z-index:3}
+.tank-ruler span{width:13px;border-top:1px solid #b9e6ef8c;display:block}
+.tank-readout{min-width:140px;max-width:250px;flex:1}
+.tank-readout .value{font-variant-numeric:tabular-nums}
+.tank-readout strong{color:var(--accent)}
+.tank-unavailable .tank-water{height:0!important}
+.tank-unavailable .tank-shell{opacity:.75}
+.tank-unavailable .tank-ruler span{border-color:#f8bd6780}
+@keyframes tank-sway{from{transform:translateX(-8px) rotate(-1deg)}to{transform:translateX(9px) rotate(1deg)}}
+.tank-control-layout{display:flex;gap:26px;align-items:center;flex-wrap:wrap;padding:18px 8px 12px}
+.tank-editor{width:188px;height:292px;position:relative;flex:none;touch-action:none;user-select:none}
+.tank-editor .tank-shell{position:absolute;left:26px;top:4px;width:136px;height:272px}
+.tank-editor .tank-ruler{inset:13px 7px}
+.tank-editor .tank-water{height:var(--fill)}
+.tank-handle{position:absolute;left:0;right:0;height:30px;display:flex;align-items:center;justify-content:flex-end;gap:6px;transform:translateY(-50%);z-index:8;cursor:ns-resize;touch-action:none;outline-offset:3px}
+.tank-handle:before{content:"";position:absolute;left:29px;right:26px;top:50%;border-top:2px dashed currentColor;opacity:.9}
+.tank-handle span{position:relative;color:#081320;padding:4px 6px;border-radius:7px;min-width:60px;text-align:center;font-size:12px;font-weight:800;box-shadow:0 3px 9px #0008}
+.tank-handle[data-handle="on"]{color:#f8bd67}
+.tank-handle[data-handle="off"]{color:#65e7cc}
+.tank-handle[data-handle="on"] span{background:#f8bd67}
+.tank-handle[data-handle="off"] span{background:#65e7cc}
+.tank-handle:focus-visible span{outline:3px solid white;outline-offset:2px}
+.tank-editor .tank-cap{left:43%;width:40%;top:0}
+.threshold-side{min-width:min(100%,260px);flex:1}
+.threshold-legend{display:flex;align-items:center;gap:9px;margin:7px 0;color:var(--muted);font-size:13px}
+.threshold-legend i{display:block;width:12px;height:12px;border-radius:4px}
+@media(max-width:540px){.tank-stage{gap:12px}.tank-shell{width:116px;height:184px}.tank-readout{min-width:125px}.tank-editor{margin:0 auto}.tank-control-layout{gap:10px;padding:12px 0}}
+@media(prefers-reduced-motion:reduce){.tank-water,.tank-water:before,.tank-water:after{animation:none!important;transition:none!important}}
+
+
+/* App shell: header + navigation remain stationary; only content scrolls. */
+html,body{width:100%;height:100%;overflow:hidden}
+body{min-height:0}
+main{height:100vh;height:100dvh;max-width:1220px;padding:14px 22px 0;display:flex;flex-direction:column;min-height:0}
+#app{display:flex;flex-direction:column;min-height:0;flex:1;overflow:hidden}
+.top{flex:none;margin-bottom:12px;border-radius:16px;position:relative;z-index:2;padding:14px 18px}
+.brand{display:flex;gap:12px;align-items:center;min-width:0}
+.brand-logo{width:48px;height:48px;object-fit:contain;flex:none;border-radius:12px;background:#0b2736;padding:5px}
+.brand-icon-fallback{width:48px;height:48px;border-radius:12px;flex:none;background:linear-gradient(145deg,#1cb7b5,#1475bb);color:#eafffb;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:20px}
+.brand h1{font-size:clamp(20px,2.5vw,28px)}
+.brand .eyebrow{font-size:10px}
+.nav{flex:none;overflow-x:auto;flex-wrap:nowrap;overscroll-behavior-x:contain;margin:0 0 10px;padding-bottom:6px;scrollbar-width:thin}
+.nav button{white-space:nowrap;flex:none}
+#pageViewport{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:3px 3px 18px;scrollbar-width:thin;scrollbar-color:#39586e transparent}
+#pageViewport .page{min-height:100%}
+#pageViewport footer{padding-bottom:10px}
+@media(max-width:540px){
+ main{padding:8px 9px 0}
+ .top{padding:10px 12px;margin-bottom:8px;align-items:center}
+ .brand{gap:8px}
+ .brand-logo,.brand-icon-fallback{height:38px;width:38px;border-radius:10px}
+ .brand h1{font-size:20px}
+ .brand .eyebrow{font-size:8px;letter-spacing:.07em}
+ .brand .muted{font-size:11px}
+ .top .chip{padding:6px 8px;font-size:10px}
+ .top #clock{font-size:10px}
+ .nav{margin-bottom:7px}
+ #pageViewport{padding:2px 0 10px}
+}
+
+</style></head><body><main>
+<section id="loginBox" class="panel auth hidden" role="dialog" aria-label="Administrator unlock">
+<div class="eyebrow">SMART HOME · WATER MANAGEMENT</div><h1>SmartTank</h1>
+<p class="muted">Sign in to configure your controller.</p>
+<form id="loginForm"><label for="loginPass">Administrator password</label>
+<input id="loginPass" type="password" required autocomplete="current-password" minlength="8">
+<button type="submit">Unlock control center</button></form>
+<div id="loginMsg" class="message"></div><button id="cancelLogin" class="alt" type="button">Back to monitoring</button>
+<small>The administrator credential is verified on the ESP32-S3, not in this webpage.</small>
+</section>
+<section id="changeBox" class="panel auth hidden">
+<div class="eyebrow">SECURE INITIAL SETUP</div><h1>Set your password</h1>
+<p class="muted">The factory password must be changed on your first login. Choose a new password with at least 10 characters.</p>
+<form id="changeForm">
+<label>Current password</label><input id="oldPass" type="password" required autocomplete="current-password">
+<label>New administrator password</label><input id="newPass" type="password" minlength="10" maxlength="64" autocomplete="new-password" required>
+<label>Confirm new password</label><input id="confirmPass" type="password" minlength="10" maxlength="64" autocomplete="new-password" required>
+<button type="submit">Save new password</button></form><div id="changeMsg" class="message"></div>
+</section>
+<div id="app">
+<header class="top panel"><div class="brand"><img class="brand-logo" src="/logo.png" alt="SmartTank logo" onerror="this.hidden=true;document.getElementById('brandFallback').hidden=false"><span class="brand-icon-fallback" id="brandFallback" hidden>ST</span><div><div class="eyebrow">SMART HOME · WATER MANAGEMENT</div><h1>SmartTank</h1><div class="muted">Local water monitoring & control</div></div></div>
+<div style="text-align:right"><div class="chip" id="net">Connecting…</div><div class="muted" id="clock" style="margin-top:8px">--:--:--</div></div></header>
+<nav class="nav" aria-label="Sections">
+<button type="button" data-page="overview" class="active">Overview</button>
+<button type="button" data-page="display">Display</button>
+<button type="button" data-page="settings">Settings</button>
+<button type="button" data-page="wifi">Wi-Fi</button>
+<button type="button" data-page="network">Network</button>
+<button type="button" data-page="location">Time & Weather</button>
+<button type="button" data-page="security">Security</button>
+<button type="button" data-page="configuration">Configuration <span aria-hidden="true">🔒</span></button>
+</nav>
+<div id="pageViewport" tabindex="-1" aria-label="Page content">
+<section id="overview" class="page active">
+<div id="retryAlert" class="panel alert hidden" style="margin-bottom:14px">
+<strong>Water supply not detected</strong><p>The pump was stopped because the tank level did not rise. SmartTank will retry according to your schedule.</p>
+<div id="retryLabel" class="muted">Next retry</div><div id="retryCountdown" class="count">--:--:--</div>
+<small>To change the retry time, use System Retry on the TFT display.</small>
+</div>
+<div class="grid">
+<div class="panel span2" id="overviewTank">
+<h2>Live tank level</h2>
+<div class="tank-stage">
+<div class="tank-shell" aria-hidden="true"><div class="tank-cap"></div><div id="liveWater" class="tank-water"></div>
+<div class="tank-ruler"><span></span><span></span><span></span><span></span><span></span></div></div>
+<div class="tank-readout"><small>MEASURED WATER</small><div class="value accent" id="level">--%</div>
+<div id="volume">Waiting for sensor</div><div class="message" id="tankLinkState">Connecting to LoRa sensor…</div>
+<small id="tankCountText">Tank configuration loading…</small></div>
+</div></div>
+<div class="panel"><small>PUMP OUTPUT</small><div class="value" id="pump">--</div><small id="pumpmode">--</small></div>
+<div class="panel"><small>LoRa SENSOR</small><div class="value" id="link">--</div><small id="distance">--</small></div>
+<div class="panel"><small>AUTOMATIC MODE</small><div class="value" id="auto">--</div><small id="thresholds">--</small></div>
+<div class="panel span2"><h2>Manual pump control</h2>
+<p class="muted">Start a timed manual fill. The remaining time comes from the ESP32, and automatic safety stops still apply.</p>
+<div id="manualTimerPanel" class="help" role="status" aria-live="off">
+<div class="eyebrow" id="manualTimerLabel">MANUAL PUMP · STANDBY</div>
+<div class="count" id="manualCountdown">--:--</div>
+<small id="manualTimerHelp">Select Start to begin a timed manual run.</small>
+</div>
+<div class="actions"><button type="button" id="pumpStart">Start manual</button><button type="button" id="pumpStop" class="danger">Stop manual</button></div>
+<div id="manualStartHint" class="muted"></div><div id="pumpmsg" class="message" role="status"></div></div>
+<div class="panel span2"><h2>Automatic operation</h2><p class="muted">The existing pump controller remains authoritative.</p><div class="actions"><button id="autoOn">Enable automatic</button><button id="autoOff" class="alt">Disable automatic</button></div></div>
+<div class="panel span2"><h2>Tank configuration</h2><p class="muted">Tank count, total litres, height and pump thresholds are managed in the password-protected Configuration tab.</p><div class="actions"><button class="alt" type="button" id="openTankConfig">Open configuration</button></div></div>
+<div class="panel span2"><h2>Time & weather</h2><div class="weather"><div class="value" id="temperature">--°C</div><div><div id="weatherText">Weather unavailable</div><small id="weatherPlace">Choose a city in Time & Weather</small></div></div><div class="divider"></div><small>Forecast requires internet. Device clock uses NTP when connected.</small></div>
+</div></section>
+<section id="settings" class="page">
+<div class="panel" style="margin-bottom:14px">
+<div class="eyebrow">SMARTTANK · OPERATING SETTINGS</div>
+<h2>Automatic filling & manual override</h2>
+<p class="muted">Change everyday pump thresholds and manual-run duration here. Changes are saved to the ESP32 and also appear in Management on its TFT screen.</p>
+<form id="operatingForm">
+<div class="tank-control-layout">
+<div class="tank-editor" id="thresholdTank" aria-label="Drag the two threshold markers to adjust automatic filling levels">
+<div class="tank-shell" aria-hidden="true"><div class="tank-cap"></div><div class="tank-water" id="settingsWater"></div><div class="tank-ruler"><span></span><span></span><span></span><span></span><span></span></div></div>
+<div class="tank-handle" id="handleOff" data-handle="off" role="slider" tabindex="0" aria-label="Stop filling at percentage" aria-valuemin="1" aria-valuemax="100"><span id="offHandleText">OFF 95%</span></div>
+<div class="tank-handle" id="handleOn" data-handle="on" role="slider" tabindex="0" aria-label="Start filling below percentage" aria-valuemin="0" aria-valuemax="99"><span id="onHandleText">ON 30%</span></div>
+</div>
+<div class="threshold-side"><h2>Drag to adjust</h2>
+<p class="muted">Move the two markers up or down to choose when the pump starts and stops.</p>
+<div class="threshold-legend"><i style="background:#65e7cc"></i> OFF marker — stop filling</div>
+<div class="threshold-legend"><i style="background:#f8bd67"></i> ON marker — start filling</div>
+<div class="help">Dragging only changes the preview. Your controller keeps its existing settings until you press Save.</div>
+</div>
+</div>
+<div class="row">
+<div><label for="on">Start automatic filling below (%)</label><input id="on" type="number" step=".5" min="0" max="99" required></div>
+<div><label for="off">Stop automatic filling at (%)</label><input id="off" type="number" step=".5" min="1" max="100" required></div>
+<div><label for="mins">Manual override maximum (minutes)</label><input id="mins" type="number" min="1" max="120" step="1" required></div>
+</div>
+<div class="help">Safety requirement: OFF must exceed ON by at least 1%. Manual operation still follows the pump controller's safety limits.</div>
+<div class="actions"><button type="submit">Save operating settings</button>
+<button type="button" class="alt" id="reloadOperating">Reload from ESP32</button>
+<button type="button" class="alt" id="downloadBackup">Download settings backup</button></div>
+<div id="operatingMsg" class="message" role="status"></div>
+</form>
+</div>
+</section>
+<section id="display" class="page"><div class="panel"><h2>TFT display management</h2><div class="message" id="displaySync">Reading settings from SmartTank...</div><p class="muted">Changes save directly to ESP32; rotation, brightness, timeout, theme, and sleep window are independent of portal appearance.</p><form id="displayForm">
+<div class="row">
+<div><label>Screen orientation</label><select id="rotation"><option value="0">Portrait · 0°</option><option value="1">Landscape · 90°</option><option value="2">Portrait · 180°</option><option value="3">Landscape · 270°</option></select></div>
+<div><label>Theme · Dark/Light</label><select id="theme"><option value="0">Midnight (Dark)</option><option value="1">Slate</option><option value="2">Amber</option><option value="3">Terminal</option><option value="4">Daylight (Light)</option></select></div>
+<div><label>Idle timeout (seconds, 0 = off)</label><input id="timeout" type="number" min="0" max="600" required></div>
+<div><label>Dim step (%)</label><select id="dim"><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option></select></div>
+<div><label>Brightness (%)</label><input id="brightness" type="number" min="40" max="100" step="10" required></div>
+<div><label>Buzzer volume</label><select id="buzzer"><option value="0">Off</option><option value="1">Low</option><option value="2">Medium</option><option value="3">High</option></select></div>
+<div><label>Sleep window start (HH:MM)</label><input id="sleepStart" type="time" required></div>
+<div><label>Sleep window end (HH:MM)</label><input id="sleepEnd" type="time" required></div>
+</div><label><input id="sleepEnabled" type="checkbox" style="width:auto;display:inline;margin:10px"> Enable sleep window</label><br>
+<div class="actions"><button type="button" id="setDark" class="alt">Dark display</button><button type="button" id="setLight" class="alt">Light display</button></div><button type="submit">Save display settings</button><div id="displayMsg" class="message"></div></form></div></section>
+<section id="wifi" class="page"><div class="panel"><h2>Wi-Fi connection</h2><p class="muted" id="wifiinfo">Network details loading...</p><div class="actions"><button id="scanBtn" type="button" class="alt">Scan nearby networks</button></div><div id="scanMsg" class="message">Scan to see networks detected by the ESP32-S3 (2.4 GHz).</div><div id="wifiNetworks"></div><div class="divider"></div>
+<form id="wifiForm"><label>Wi-Fi name (SSID)</label><input id="wifiSSID" maxlength="32" placeholder="Select a network or enter manually" required><label>Wi-Fi password</label><input id="wifiPassword" type="password" maxlength="63" autocomplete="new-password" placeholder="Enter network password">
+<button type="submit">Save Wi-Fi and connect</button><div id="wifiMsg" class="message"></div></form><div class="help">Setup access point remains a recovery path while switching networks. This dashboard may reconnect at a new IP.</div></div></section>
+<section id="network" class="page"><div class="panel"><h2>IP and hostname</h2><p class="muted">DHCP recommended. Changes apply after restarting SmartTank.</p><form id="networkForm"><label>IP assignment</label><select id="netdhcp"><option value="1">Automatic · DHCP</option><option value="0">Static IP</option></select><div id="staticFields" class="row"><div><label>Static IP</label><input id="netip" required></div><div><label>Gateway</label><input id="netgateway" required></div><div><label>Subnet mask</label><input id="netsubnet" required></div><div><label>DNS</label><input id="netdns" required></div></div><label>Hostname (without .local)</label><input id="nethost" maxlength="24" required><div class="row"><div><label>Setup AP IP</label><input id="netapip" required></div><div><label>Setup AP subnet</label><input id="netapsubnet" required></div></div><button type="submit">Save network configuration</button><div id="networkmsg" class="message"></div></form></div></section>
+<section id="location" class="page"><div class="panel"><h2>Local time and weather</h2><p class="muted">Choose your city and country. The location is saved on the ESP32; an online weather service supplies conditions, while NTP synchronizes the clock.</p>
+<form id="locationForm"><div class="row"><div><label>City</label><input id="city" maxlength="64" required placeholder="Lucknow"></div><div><label>Country</label><input id="country" maxlength="64" required placeholder="India"></div></div><label>NTP server</label><input id="ntp" maxlength="100" value="pool.ntp.org" required>
+<button type="submit">Find city and save time settings</button><div id="locationMsg" class="message"></div></form><div class="divider"></div><div class="weather"><div class="value" id="weatherTemperature">--°C</div><div><div id="weatherDescription">Weather unavailable</div><div class="muted" id="locationClock">--:--:--</div><div class="muted" id="weatherDevice">Display weather: checking...</div></div></div><div class="help">Weather needs internet access on the device viewing this webpage. It cannot be fetched via an offline-only setup hotspot. Time-zone offset is saved for the selected location; daylight-saving changes may need re-selection.</div></div></section>
+<section id="security" class="page"><div class="panel"><h2>Administrator security</h2><p class="muted">The password verifier and session state live on the ESP32-S3. No admin password is embedded in HTML or JavaScript.</p>
+<form id="securityForm"><label>Current admin password</label><input id="securityOld" type="password" required autocomplete="current-password"><label>New password</label><input id="securityNew" type="password" minlength="10" maxlength="64" required autocomplete="new-password"><button type="submit">Change administrator password</button><div id="securityMsg" class="message"></div></form><div class="divider"></div><button id="logout" class="alt" type="button">Log out</button></div></section>
+<section id="configuration" class="page">
+<div class="panel" style="margin-bottom:14px">
+<div class="eyebrow">SMARTTANK · ADMINISTRATION</div><h2>Tank configuration</h2>
+<p class="muted">Set installed tank count, total storage and sensor calibration. For pump thresholds and manual override, use the Settings tab.</p>
+<div class="help" id="adminState">Administrator is locked</div>
+<div class="actions"><button type="button" id="unlockAdmin">Unlock configuration</button><button type="button" class="alt" id="lockAdmin">Lock administrator</button></div>
+</div>
+<div class="panel" style="margin-bottom:14px">
+<h2>Tank installation</h2>
+<p class="muted">The ESP32 currently measures ONE level sensor. Multiple tanks can be configured only as connected tanks sharing the same level. Separate tank-level readings require additional sensor nodes.</p>
+<form id="tankForm">
+<div class="row">
+<div><label for="tankCount">Number of connected tanks</label><select id="tankCount" required>
+<option value="1">1 tank</option><option value="2">2 tanks</option>
+<option value="3">3 tanks</option><option value="4">4 tanks</option>
+<option value="5">5 tanks</option><option value="6">6 tanks</option>
+<option value="7">7 tanks</option><option value="8">8 tanks</option>
+</select></div>
+<div><label for="capacity">Total capacity of all tanks (litres)</label><input id="capacity" type="number" min="1" max="100000" step="1" required></div>
+<div><label for="height">Tank / sensor calibration height (cm)</label><input id="height" type="number" min="20" max="500" step=".5" required></div>
+
+
+
+</div>
+<div class="help" id="tankPreview">Configured system capacity will appear here.</div>
+<button type="submit">Save tank configuration</button><div id="settingsmsg" class="message" role="status"></div>
+</form></div>
+<div class="panel">
+<h2>Backup and recovery</h2>
+<p class="muted">Download a tank-settings backup before flashing or changing partitions. Restore a saved backup here after administrator unlock. This covers tank count, total litres, sensor height, ON/OFF thresholds and manual override time—not Wi-Fi credentials or passwords.</p>
+<div class="actions"><button type="button" class="alt" id="downloadBackupAdmin">Download tank settings</button></div>
+<label for="restoreBackupFile">Restore from SmartTank JSON backup</label>
+<input type="file" accept=".json,application/json" id="restoreBackupFile">
+<button type="button" id="restoreBackupBtn">Restore saved tank settings</button>
+<div id="backupRestoreMsg" class="message" role="status"></div>
+<div class="divider"></div><h2>Configuration details</h2>
+<p class="muted">The total litres estimate assumes linked tanks rise and fall together. It is not an independent measurement of every tank. Auto filling and dry-run safety still use the one validated level signal.</p>
+</div></section>
+<footer>SmartTank · Local ESP32-S3 portal · Pump safety remains in firmware · Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" style="color:#73ddca">Open-Meteo</a></footer>
+</div></div></main>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+let adminActive=false, pendingPage="overview";
+let loc={city:"",country:"",lat:0,lon:0,tz:"",offset:330}, weatherUpdated=0;
+async function request(url,method,body){
+  const opts={method:method||"GET",cache:"no-store",credentials:"same-origin",headers:{}};
+  if(body){opts.headers["Content-Type"]="application/x-www-form-urlencoded";opts.body=new URLSearchParams(body);}
+  if(url==="/api/operating-settings" && method==="POST")opts.headers["X-SmartTank-Settings"]="1";
+  if(["/api/pump/start","/api/pump/stop","/api/auto"].includes(url) && method==="POST")opts.headers["X-SmartTank-Control"]="1";
+  const res=await fetch(url,opts),txt=await res.text();
+  if(!res.ok)throw Error(txt||("HTTP "+res.status));
+  try{return JSON.parse(txt);}catch{return txt;}
+}
+
+// Both tank graphics use the S3 measurement; invalid LoRa data never looks
+// like a live reading. No animation is used to invent a water level.
+let lastMeasuredLevel=null;
+function updateLiveTank(d){
+ const healthy=Boolean(d.sensorConnected&&d.sensorValid&&d.levelValid&&Number.isFinite(Number(d.level)));
+ const pct=healthy?Math.max(0,Math.min(100,Number(d.level))):null;
+ lastMeasuredLevel=pct;
+ $("liveWater").style.setProperty("--fill",(pct===null?0:pct)+"%");
+ $("overviewTank").classList.toggle("tank-unavailable",pct===null);
+ $("tankLinkState").textContent=pct===null?"Sensor offline · level unavailable":"Live LoRa measurement";
+ $("tankCountText").textContent=(Number(d.tankCount)||1)+" connected tank(s) · "+Number(d.capacity).toLocaleString()+" L configured total";
+ $("settingsWater").style.setProperty("--fill",(pct===null?0:pct)+"%");
+ $("thresholdTank").classList.toggle("tank-unavailable",pct===null);
+}
+function clampThreshold(n,min,max){return Math.max(min,Math.min(max,Math.round(n*2)/2));}
+function thresholdValues(){
+ return {on:Number($("on").value),off:Number($("off").value)};
+}
+// The visual scale is positioned against the real shell interior, 0%=bottom.
+const thresholdSurface={top:19,bottom:266};
+function renderThresholdMarkers(){
+ const {on,off}=thresholdValues();
+ if(!Number.isFinite(on)||!Number.isFinite(off))return;
+ for(const [id,val,prefix] of [["handleOn",on,"ON"],["handleOff",off,"OFF"]]){
+  const y=thresholdSurface.bottom-(thresholdSurface.bottom-thresholdSurface.top)*val/100;
+  $(id).style.top=y+"px";
+  $(id).setAttribute("aria-valuenow",String(val));
+  $(id).setAttribute("aria-valuetext",val+" percent");
+  $(id==="handleOn"?"onHandleText":"offHandleText").textContent=prefix+" "+val+"%";
+ }
+}
+function changeThreshold(which,value){
+ const {on,off}=thresholdValues();
+ if(which==="on"){
+  $("on").value=String(clampThreshold(value,0,Math.min(99,Number.isFinite(off)?off-1:99)));
+ }else{
+  $("off").value=String(clampThreshold(value,Math.max(1,Number.isFinite(on)?on+1:1),100));
+ }
+ operatingDirty=true;
+ renderThresholdMarkers();
+ $("operatingMsg").textContent="Unsaved changes · press Save to apply";
+}
+for(const which of ["on","off"]){
+ const handle=$(which==="on"?"handleOn":"handleOff");
+ handle.addEventListener("pointerdown",e=>{
+  if(e.button!==0&&e.pointerType==="mouse")return;
+  e.preventDefault();handle.setPointerCapture(e.pointerId);
+  const move=ev=>{
+   const rect=$("thresholdTank").getBoundingClientRect();
+   const y=ev.clientY-rect.top;
+   const pct=(thresholdSurface.bottom-y)*100/(thresholdSurface.bottom-thresholdSurface.top);
+   changeThreshold(which,pct);
+  };
+  move(e);
+  const stop=()=>{handle.removeEventListener("pointermove",move);handle.removeEventListener("pointerup",stop);handle.removeEventListener("pointercancel",stop)};
+  handle.addEventListener("pointermove",move);
+  handle.addEventListener("pointerup",stop);
+  handle.addEventListener("pointercancel",stop);
+ });
+ handle.addEventListener("keydown",e=>{
+  const step=e.shiftKey?5:0.5;
+  const now=Number($(which).value);
+  if(e.key==="ArrowUp"||e.key==="ArrowRight"){e.preventDefault();changeThreshold(which,now+step)}
+  if(e.key==="ArrowDown"||e.key==="ArrowLeft"){e.preventDefault();changeThreshold(which,now-step)}
+ });
+}
+for(const id of ["on","off"]){
+ $(id).addEventListener("input",()=>{renderThresholdMarkers();$("operatingMsg").textContent="Unsaved changes · press Save to apply";});
+}
+
+let operatingDirty=false;
+let operatingRevision=null;
+let latestSettingsRevision=null;
+$("operatingForm").addEventListener("input",()=>operatingDirty=true);
+$("operatingForm").addEventListener("change",()=>operatingDirty=true);
+let tankDirty=false;
+function updateTankPreview(){
+ const count=Number($("tankCount").value)||1;
+ const capacity=Number($("capacity").value)||0;
+ const each=capacity/count;
+ $("tankPreview").textContent="Configured: "+count+" connected tank"+(count===1?"":"s")+
+   " · "+capacity.toLocaleString()+" L total · about "+
+   (Number.isFinite(each)?each.toLocaleString(undefined,{maximumFractionDigits:1}):"--")+
+   " L per tank on average. Assumes a common water level.";
+}
+$("tankForm").addEventListener("input",()=>{tankDirty=true;updateTankPreview();});
+$("tankForm").addEventListener("change",()=>{tankDirty=true;updateTankPreview();});
+function syncAdminState(){
+ $("adminState").textContent=adminActive?
+  "Administrator unlocked · configuration changes enabled":
+  "Administrator locked · open Configuration to sign in";
+ $("unlockAdmin").textContent=adminActive?"Already unlocked":"Unlock configuration";
+}
+function showAuth(mode){
+ $("loginBox").classList.toggle("hidden",mode!=="login");
+ $("changeBox").classList.toggle("hidden",mode!=="change");
+ $("app").classList.remove("hidden");
+}
+function switchPage(id){
+ document.querySelectorAll(".page").forEach(el=>el.classList.toggle("active",el.id===id));
+ document.querySelectorAll("[data-page]").forEach(el=>el.classList.toggle("active",el.dataset.page===id));
+ $("pageViewport").scrollTop=0;
+ if(id==="settings"){
+  // Do not silently discard an in-progress edit when navigating tabs.
+  refresh();
+}
+ if(id==="display")loadDisplay(true);
+ if(id==="network")loadNetwork().catch(()=>{});
+ if(id==="location")loadLocation().catch(()=>{});
+ if(id==="configuration") {
+  syncAdminState();
+  // A stored UI flag must not bypass the ESP32's 30-minute session timeout.
+  request("/api/admin/status").then(d=>{
+    adminActive=Boolean(d.authenticated&&!d.mustChange);
+    syncAdminState();
+    if(!adminActive && $("configuration").classList.contains("active")){
+      pendingPage="configuration";
+      showAuth(d.authenticated&&d.mustChange?"change":"login");
+    }
+  }).catch(()=>{
+    adminActive=false;syncAdminState();
+    if($("configuration").classList.contains("active"))showAuth("login");
+  });
+ }
+}
+document.querySelectorAll("[data-page]").forEach(el=>el.onclick=()=>switchPage(el.dataset.page));
+$("openTankConfig").onclick=()=>switchPage("configuration");
+$("unlockAdmin").onclick=()=>{
+ if(adminActive)return;
+ pendingPage="configuration";showAuth("login");
+};
+$("lockAdmin").onclick=async()=>{
+ await request("/api/admin/logout","POST").catch(()=>{});
+ adminActive=false;syncAdminState();
+};
+function adminRequired(){
+ if(adminActive)return false;
+ // Never request credentials outside the Configuration tab.
+ const hint="Unlock Configuration before changing settings.";
+ for(const id of ["pumpmsg","settingsmsg","displayMsg","wifiMsg","networkmsg","locationMsg","securityMsg","scanMsg"]){
+  if($(id))$(id).textContent=hint;
+ }
+ return true;
+}
+$("cancelLogin").onclick=()=>{showAuth("app");pendingPage="overview";};
+async function authStatus(){
+ showAuth("app");
+ try {
+  const d=await request("/api/admin/status");
+  adminActive=Boolean(d.authenticated&&!d.mustChange);
+ }catch{adminActive=false;}
+ syncAdminState();
+ await Promise.allSettled([loadDisplay(true),loadLocation()]);
+ refresh();weather();
+}
+$("loginForm").onsubmit=async e=>{
+  e.preventDefault();$("loginMsg").textContent="Checking credentials...";
+  try{const d=await request("/api/admin/login","POST",{password:$("loginPass").value});
+    $("loginPass").value="";adminActive=!d.mustChange;showAuth(d.mustChange?"change":"app");syncAdminState();
+    $("loginMsg").textContent="";
+    if(!d.mustChange){switchPage(pendingPage);pendingPage="overview";refresh();weather();}
+  }catch(err){$("loginMsg").textContent=err.message;}
+};
+async function changePassword(oldp,newp,target){
+  await request("/api/admin/change","POST",{old:oldp,next:newp});
+  target.textContent="Password updated.";
+}
+$("changeForm").onsubmit=async e=>{
+  e.preventDefault();
+  if($("newPass").value!==$("confirmPass").value){$("changeMsg").textContent="Passwords do not match";return;}
+  try{await changePassword($("oldPass").value,$("newPass").value,$("changeMsg"));
+    $("changeForm").reset();adminActive=true;showAuth("app");syncAdminState();switchPage(pendingPage);pendingPage="overview";refresh();weather();
+  }catch(err){$("changeMsg").textContent=err.message;}
+};
+$("securityForm").onsubmit=async e=>{
+  e.preventDefault();if(adminRequired())return;try{await changePassword($("securityOld").value,$("securityNew").value,$("securityMsg"));$("securityForm").reset();}
+  catch(err){$("securityMsg").textContent=err.message;}
+};
+$("logout").onclick=async()=>{await request("/api/admin/logout","POST").catch(()=>{});adminActive=false;displayDirty=false;showAuth("app");syncAdminState();switchPage("overview");};
+function fmt(sec){
+  sec=Math.max(0,Math.floor(Number(sec)||0));
+  return [Math.floor(sec/3600),Math.floor((sec%3600)/60),sec%60].map(n=>String(n).padStart(2,"0")).join(":");
+}
+async function refresh(){
+  if($("app").classList.contains("hidden"))return;
+  try{
+    const d=await request("/api/status");$("level").textContent=d.sensorConnected&&d.sensorValid&&d.levelValid?d.level.toFixed(1)+"%":"--%";
+    $("volume").textContent=d.sensorConnected&&d.sensorValid&&d.levelValid?d.volume.toFixed(0)+" / "+d.capacity.toFixed(0)+" L":"Level unavailable";
+    $("pump").textContent=d.pumpOn?"ON":"OFF";$("pumpmode").textContent=d.override?"Manual override":d.autoState;
+    updateManualCountdown(d);
+    $("link").textContent=d.sensorConnected?"ONLINE":"OFFLINE";
+    $("distance").textContent=d.sensorValid?"Distance: "+d.distance.toFixed(1)+" cm":"Sensor data unavailable";
+    $("auto").textContent=d.autoEnabled?"ENABLED":"DISABLED";
+    $("thresholds").textContent="ON "+d.autoOn+"% · OFF "+d.autoOff+"%";
+    updateLiveTank(d);
+    $("net").textContent=d.wifiConnected?"Home Wi-Fi connected":d.apActive?"Setup hotspot active":"Wi-Fi offline";
+    $("wifiinfo").textContent="IP: "+d.ip+"  ·  Host: "+d.hostname;
+    $("clock").textContent=d.clock;
+    $("locationClock").textContent=d.clock;
+    $("retryAlert").classList.toggle("hidden",!d.retryWarning);
+    if(d.retryWarning){$("retryCountdown").textContent=fmt(d.retrySeconds);
+      $("retryLabel").textContent=d.retryManual?"User-scheduled retry at "+String(d.retryHour).padStart(2,"0")+":"+String(d.retryMinute).padStart(2,"0"):"Next automatic retry";}
+    if(!tankDirty) {
+      for(const [id,val] of Object.entries({
+        height:d.height,capacity:d.capacity,tankCount:d.tankCount
+      })) if(document.activeElement!==$(id))$(id).value=val;
+      updateTankPreview();
+    }
+    latestSettingsRevision=Number(d.settingsRevision);
+    if(!operatingDirty){
+      operatingRevision=latestSettingsRevision;
+      for(const [id,val] of Object.entries({
+        on:d.autoOn,off:d.autoOff,mins:d.overrideMinutes
+      })) if(document.activeElement!==$(id))$(id).value=val;
+      renderThresholdMarkers();
+    }else if(operatingRevision!==latestSettingsRevision){
+      $("operatingMsg").textContent="Settings were changed on the TFT or another phone. Reload before saving to avoid overwriting them.";
+    }
+  }catch(err){
+    $("net").textContent="Connection lost";
+    lastMeasuredLevel=null;
+    $("overviewTank").classList.add("tank-unavailable");
+    $("liveWater").style.setProperty("--fill","0%");
+    $("settingsWater").style.setProperty("--fill","0%");
+    $("tankLinkState").textContent="Controller connection lost · water level unavailable";
+  }
+}
+let manualCountdownSnapshot={active:false,remaining:0,at:0};
+function manualTimerFormat(sec){
+ sec=Math.max(0,Math.ceil(sec));
+ return String(Math.floor(sec/60)).padStart(2,"0")+":"+String(sec%60).padStart(2,"0");
+}
+function updateManualCountdown(d){
+ const active=Boolean(d.override&&d.pumpOn);
+ manualCountdownSnapshot={
+  active,remaining:active?Number(d.manualRemainingSeconds)||0:0,
+  at:performance.now()
+ };
+ $("pumpStart").disabled=active;
+ $("pumpStop").disabled=!active;
+ $("manualTimerLabel").textContent=active?"MANUAL PUMP · RUNNING":"MANUAL PUMP · STANDBY";
+ $("manualTimerHelp").textContent=active?
+   "Controller safety stops may end the run before the timer reaches zero.":
+   "Configured duration: "+d.overrideMinutes+" min";
+ const reasons=[];
+ if(!d.manualAllowed)reasons.push("Select Auto + manual or All functions in TFT Management > Operating Mode");
+ if(!d.ssrEnabled)reasons.push("SSR output disabled in Configuration");
+ if(!d.sensorConnected||!d.sensorValid||!d.levelValid)reasons.push("LoRa sensor not ready");
+ if(d.levelValid&&d.level>=d.autoOff)reasons.push("Tank has reached OFF threshold");
+ $("manualStartHint").textContent=active?"Manual run in progress":reasons.join(" · ");
+ paintManualCountdown();
+}
+function paintManualCountdown(){
+ const d=manualCountdownSnapshot;
+ const remaining=d.active?Math.max(0,d.remaining-Math.floor((performance.now()-d.at)/1000)):0;
+ $("manualCountdown").textContent=d.active?manualTimerFormat(remaining):"--:--";
+}
+setInterval(paintManualCountdown,250);
+async function controllerAction(path,body){
+ const msg=$("pumpmsg");
+ try{
+  msg.textContent="Sending request to SmartTank...";
+  msg.textContent=await request(path,"POST",body||{});
+ }catch(err){msg.textContent="Cannot complete action: "+err.message;}
+ await refresh();
+}
+$("pumpStart").onclick=()=>controllerAction("/api/pump/start",{});
+$("pumpStop").onclick=()=>controllerAction("/api/pump/stop",{});
+$("autoOn").onclick=()=>controllerAction("/api/auto",{enabled:"1"});
+$("autoOff").onclick=()=>controllerAction("/api/auto",{enabled:"0"});
+$("tankForm").onsubmit=async e=>{
+ e.preventDefault();
+ if(adminRequired())return;
+ const o={
+   height:$("height").value,capacity:$("capacity").value,
+   tankCount:$("tankCount").value
+ };
+ const count=Number(o.tankCount),capacity=Number(o.capacity);
+ if(!Number.isInteger(count)||count<1||count>8||!Number.isFinite(capacity)||capacity<=0){
+   $("settingsmsg").textContent="Enter valid tank count and total capacity.";return;
+ }
+ try{
+   $("settingsmsg").textContent=await request("/api/settings","POST",o);
+   tankDirty=false;await refresh();
+ }catch(err){$("settingsmsg").textContent="Save failed: "+err.message;}
+};
+$("reloadOperating").onclick=()=>{
+ if(operatingDirty&&!confirm("Discard unsaved edits and reload settings from the ESP32?"))return;
+ operatingDirty=false;
+ operatingRevision=null;
+ $("operatingMsg").textContent="Reloading saved settings…";
+ refresh();
+};
+$("downloadBackupAdmin").onclick=()=>$("downloadBackup").click();
+$("restoreBackupBtn").onclick=async()=>{
+ if(adminRequired())return;
+ const input=$("restoreBackupFile"),file=input.files&&input.files[0];
+ if(!file){$("backupRestoreMsg").textContent="Select a JSON backup file first.";return;}
+ if(file.size>16384){$("backupRestoreMsg").textContent="Backup file is too large.";return;}
+ try{
+  const backup=JSON.parse(await file.text());
+  const count=Number(backup.tankCount),capacity=Number(backup.capacityLitres),
+        height=Number(backup.heightCm),on=Number(backup.autoOn),
+        off=Number(backup.autoOff),mins=Number(backup.overrideMinutes);
+  if(backup.format!=="SmartTankSettingsBackup"||backup.version!==1||
+     !Number.isInteger(count)||count<1||count>8||
+     !Number.isFinite(capacity)||capacity<1||capacity>100000||
+     !Number.isFinite(height)||height<20||height>500||
+     !Number.isFinite(on)||on<0||on>99||
+     !Number.isFinite(off)||off>100||off-on<1||
+     !Number.isInteger(mins)||mins<1||mins>120)
+    throw Error("Invalid or unsupported SmartTank tank-settings backup.");
+  if(!confirm("Restore tank setup and operating thresholds from this file? Existing saved values will be replaced."))return;
+  $("backupRestoreMsg").textContent="Restoring tank configuration…";
+  // Admin-protected calibration is restored first. A subsequent status read
+  // provides the new NVS revision for the operating settings update.
+  await request("/api/settings","POST",{
+    tankCount:String(count),capacity:String(capacity),height:String(height)
+  });
+  const current=await request("/api/status");
+  await request("/api/operating-settings","POST",{
+    on:String(on),off:String(off),minutes:String(mins),
+    revision:String(current.settingsRevision)
+  });
+  tankDirty=false;operatingDirty=false;
+  await refresh();
+  $("backupRestoreMsg").textContent="Tank configuration restored to ESP32. Check values in Settings.";
+  input.value="";
+ }catch(err){
+  $("backupRestoreMsg").textContent="Restore not completed: "+err.message+
+    ". Check current settings before retrying.";
+ }
+};
+$("downloadBackup").onclick=async()=>{
+ try{
+  const d=await request("/api/status");
+  const backup={
+   format:"SmartTankSettingsBackup",version:1,
+   savedAt:new Date().toISOString(),
+   tankCount:d.tankCount,capacityLitres:d.capacity,heightCm:d.height,
+   autoOn:d.autoOn,autoOff:d.autoOff,overrideMinutes:d.overrideMinutes,
+   revision:d.settingsRevision
+  };
+  const blob=new Blob([JSON.stringify(backup,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download="smarttank-settings-backup.json";
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  $("operatingMsg").textContent="Backup downloaded. Keep this file before firmware/partition changes.";
+ }catch(err){$("operatingMsg").textContent="Backup failed: "+err.message;}
+};
+$("operatingForm").onsubmit=async e=>{
+ e.preventDefault();
+ if(!Number.isInteger(operatingRevision)){
+   $("operatingMsg").textContent="Controller settings not loaded yet. Reload Settings first.";return;
+ }
+ if(latestSettingsRevision!==operatingRevision){
+   $("operatingMsg").textContent="Another device updated these values. Reload before saving.";return;
+ }
+ const o={on:$("on").value,off:$("off").value,minutes:$("mins").value,
+   revision:String(operatingRevision)};
+ const on=Number(o.on),off=Number(o.off),minutes=Number(o.minutes);
+ if(!Number.isFinite(on)||on<0||on>99||!Number.isFinite(off)||off>100||
+    off-on<1||!Number.isInteger(minutes)||minutes<1||minutes>120){
+   $("operatingMsg").textContent="Check the ON/OFF thresholds and duration.";return;
+ }
+ try{
+   $("operatingMsg").textContent=await request("/api/operating-settings","POST",o);
+   operatingDirty=false;await refresh();
+ }catch(err){$("operatingMsg").textContent="Save failed: "+err.message;}
+};
+// The ESP32 is authoritative. Editing a form temporarily pauses sync so
+// background reads never replace values the user is currently entering.
+let displayDirty=false;
+let displayLoading=false;
+$("displayForm").addEventListener("input",()=>{displayDirty=true;});
+$("displayForm").addEventListener("change",()=>{displayDirty=true;});
+
+async function loadDisplay(force=false){
+ if(displayLoading||(!force&&displayDirty))return;
+ if(force)displayDirty=false;
+ displayLoading=true;
+ try{
+  const d=await request("/api/display");
+  if(!force&&displayDirty)return;
+  for(const id of ["rotation","theme","timeout","dim","buzzer"]){
+   $(id).value=String(d[id]);
+  }
+  // Live brightness is intentionally reflected, including manual knob changes.
+  $("brightness").value=d.brightness<40?40:d.brightness;
+  $("sleepEnabled").checked=Boolean(d.sleepEnabled);
+  $("sleepStart").value=d.sleepStart;
+  $("sleepEnd").value=d.sleepEnd;
+  $("displaySync").textContent="Live settings from SmartTank · changes made with the rotary are reflected here";
+ }catch(err){
+  $("displaySync").textContent="Unable to sync: "+err.message;
+ }finally{displayLoading=false;}
+}
+$("setDark").onclick=()=>{if(adminRequired())return;$("theme").value="0";displayDirty=true;$("displayForm").requestSubmit();};
+$("setLight").onclick=()=>{if(adminRequired())return;$("theme").value="4";displayDirty=true;$("displayForm").requestSubmit();};
+$("displayForm").onsubmit=async e=>{
+ e.preventDefault();if(adminRequired())return;
+ const o={};
+ for(const id of ["rotation","theme","timeout","dim","brightness","buzzer","sleepStart","sleepEnd"])
+  o[id]=$(id).value;
+ o.sleepEnabled=$("sleepEnabled").checked?"1":"0";
+ try{
+  $("displayMsg").textContent=await request("/api/display","POST",o);
+  displayDirty=false;
+  await loadDisplay(true);
+ }catch(err){$("displayMsg").textContent="Error: "+err.message;}
+};
+function toggleStatic(){const dhcp=$("netdhcp").value==="1";
+ document.querySelectorAll("#staticFields input").forEach(el=>{el.disabled=dhcp;el.required=!dhcp;});
+}
+$("netdhcp").onchange=toggleStatic;
+async function loadNetwork(){const d=await request("/api/network-config");
+ $("netdhcp").value=d.dhcp?"1":"0";
+ for(const id of ["ip","gateway","subnet","dns","hostname","apip","apsubnet"]){const ui={ip:"netip",gateway:"netgateway",subnet:"netsubnet",dns:"netdns",hostname:"nethost",apip:"netapip",apsubnet:"netapsubnet"};$(ui[id]).value=d[id];}
+ toggleStatic();
+}
+$("networkForm").onsubmit=e=>{e.preventDefault();if(adminRequired())return;const o={dhcp:$("netdhcp").value,ip:$("netip").value,gateway:$("netgateway").value,subnet:$("netsubnet").value,dns:$("netdns").value,hostname:$("nethost").value,apip:$("netapip").value,apsubnet:$("netapsubnet").value};act("/api/network-config",o,$("networkmsg"));};
+$("wifiForm").onsubmit=e=>{e.preventDefault();if(adminRequired())return;act("/save",{ssid:$("wifiSSID").value,password:$("wifiPassword").value},$("wifiMsg"));};
+function wifiLabel(rssi){return rssi>=-60?"Excellent":rssi>=-70?"Good":rssi>=-80?"Fair":"Weak";}
+$("scanBtn").onclick=async()=>{
+ if(adminRequired())return;
+ const btn=$("scanBtn");btn.disabled=true;$("wifiNetworks").replaceChildren();$("scanMsg").textContent="Scanning...";
+ try{await request("/api/wifi/scan","POST",{});let done=false;
+  for(let i=0;i<30;i++){await new Promise(resolve=>setTimeout(resolve,650));const d=await request("/api/wifi/scan");
+   if(d.state==="scanning")continue;
+   if(d.state!=="done")throw Error("Wi-Fi scan failed");
+   done=true;const seen=new Set();let count=0;
+   for(const net of (d.networks||[]).sort((a,b)=>b.rssi-a.rssi)){
+    if(!net.ssid||seen.has(net.ssid))continue;seen.add(net.ssid);count++;
+    const b=document.createElement("button");b.type="button";b.className="network";
+    const name=document.createElement("span");name.textContent=net.ssid;
+    const info=document.createElement("small");info.textContent=wifiLabel(net.rssi)+" · "+net.rssi+" dBm · "+(net.secured?"Secured":"Open");
+    b.append(name,info);b.onclick=()=>{$("wifiSSID").value=net.ssid;$("wifiPassword").value="";$("wifiPassword").focus();$("scanMsg").textContent="Selected "+net.ssid+". Enter its password if required."};
+    $("wifiNetworks").appendChild(b);
+   }
+   $("scanMsg").textContent=count+" Wi-Fi networks found";break;
+  }
+  if(!done)throw Error("Scan timed out");
+ }catch(err){$("scanMsg").textContent=err.message;}finally{btn.disabled=false;}
+};
+async function loadLocation(){
+ const d=await request("/api/location");loc=d;
+ try{
+  const w=await request("/api/weather");
+  $("weatherDevice").textContent="Display weather: "+w.status+
+    (w.valid?" · "+w.temperatureC+" °C":"");
+ }catch{
+  $("weatherDevice").textContent="Display weather status unavailable";
+ }
+ $("city").value=d.city||"";$("country").value=d.country||"";$("ntp").value=d.ntp||"pool.ntp.org";
+ $("weatherPlace").textContent=d.city?(d.city+", "+d.country):"Choose a city";
+}
+function weatherDescription(code){
+ if(code===0)return"Clear sky";if(code<=3)return"Partly cloudy";
+ if(code<=48)return"Fog";if(code<=67)return"Rain / drizzle";
+ if(code<=77)return"Snow";if(code<=82)return"Rain showers";
+ if(code<=86)return"Snow showers";if(code>=95)return"Thunderstorm";return"Cloudy";
+}
+async function weather(){
+ if(!Number.isFinite(Number(loc.lat))||!Number.isFinite(Number(loc.lon))||!loc.city||$("app").classList.contains("hidden"))return;
+ if(Date.now()-weatherUpdated<600000)return;
+ try{
+ const url="https://api.open-meteo.com/v1/forecast?latitude="+encodeURIComponent(loc.lat)+"&longitude="+encodeURIComponent(loc.lon)+"&current=temperature_2m,weather_code&timezone=auto";
+ const d=await(await fetch(url)).json();if(!d.current)throw Error("Weather unavailable");
+ const t=d.current.temperature_2m.toFixed(1)+"°C",desc=weatherDescription(d.current.weather_code);
+ $("temperature").textContent=t;$("weatherTemperature").textContent=t;
+ $("weatherText").textContent=desc;$("weatherDescription").textContent=desc;
+ $("weatherPlace").textContent=loc.city+", "+loc.country;weatherUpdated=Date.now();
+ // Browser online forecast can populate the ESP32 TFT even when the S3's
+ // independent HTTPS request fails (e.g. phone has mobile data).
+ try{
+  await request("/api/weather/sync","POST",{
+    lat:loc.lat,lon:loc.lon,
+    temperature:d.current.temperature_2m,code:d.current.weather_code
+  });
+  $("weatherDevice").textContent="Display weather: synced to ESP32-S3";
+ }catch(syncError){
+  $("weatherDevice").textContent="Display sync unavailable: "+syncError.message;
+ }
+ }catch(err){weatherUpdated=Date.now();$("weatherText").textContent="Weather unavailable (internet required)";$("weatherDescription").textContent="Weather unavailable";}
+}
+$("locationForm").onsubmit=async e=>{
+ e.preventDefault();if(adminRequired())return;$("locationMsg").textContent="Finding city and its time zone...";
+ try{
+ const query=$("city").value.trim()+", "+$("country").value.trim();
+ const u="https://geocoding-api.open-meteo.com/v1/search?name="+encodeURIComponent($("city").value.trim())+"&count=10&language=en";
+ const g=await(await fetch(u)).json();
+ const matches=(g.results||[]).filter(x=>x.country.toLowerCase()===$("country").value.trim().toLowerCase()||x.country_code.toLowerCase()===$("country").value.trim().toLowerCase());
+ const place=matches.find(x=>x.name.toLowerCase()===$("city").value.trim().toLowerCase())||matches[0];
+ if(!place)throw Error("City/country not found. Check spelling and try again.");
+ const w=await(await fetch("https://api.open-meteo.com/v1/forecast?latitude="+place.latitude+"&longitude="+place.longitude+"&current=temperature_2m&timezone=auto")).json();
+ if(typeof w.utc_offset_seconds!=="number")throw Error("Time zone lookup failed");
+ const cfg={city:place.name,country:place.country,lat:place.latitude,lon:place.longitude,tz:place.timezone,offset:Math.round(w.utc_offset_seconds/60),ntp:$("ntp").value.trim()};
+ await request("/api/location","POST",cfg);
+ loc=cfg;weatherUpdated=0;$("locationMsg").textContent="Saved "+place.name+", "+place.country+". NTP/time zone updated.";
+ weather();
+ }catch(err){$("locationMsg").textContent=err.message+" (Internet access is required to search locations.)";}
+};
+setInterval(()=>{if(!$("app").classList.contains("hidden")){refresh();weather();}},2000);
+setInterval(()=>{
+ if(!$("app").classList.contains("hidden")&&!displayDirty){
+  loadDisplay();
+ }
+},3000);
+document.addEventListener("visibilitychange",()=>{
+ if(!document.hidden&&!$("app").classList.contains("hidden")){
+  refresh();
+  loadDisplay();
+ }
+});
+authStatus();
+</script></body></html>
+)stportal";

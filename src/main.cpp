@@ -19,6 +19,7 @@
 #include "Telemetry.h"
 #include "Management.h"
 #include "FeatureControl.h"
+#include "WeatherService.h"
 
 // All globals are in StateDefinitions.cpp
 // All pages are in Page*.cpp / UiDrawHelpers.cpp / UiPages.cpp
@@ -57,6 +58,8 @@ void drawCurrentScreen() {
     case Page::DisplayNTP:         uiDisplayNTPDraw(); return;
 
     case Page::ManagementMode:     uiManagementModeDraw(); return;
+    case Page::ManagementThresholds: uiManagementThresholdsDraw(); return;
+    case Page::ManagementOverride: uiManagementOverrideDraw(); return;
     case Page::ManagementBuzzer:   uiManagementBuzzerDraw(); return;
     case Page::ManagementRotation: uiManagementRotationDraw(); return;
     case Page::NetworkStatus:      uiNetworkStatusDraw(); return;
@@ -103,7 +106,8 @@ void setup() {
   schedulerInit();
   displayEngineInit();
   wifiManagerBegin();
-telemetryInit();
+  weatherServiceBegin();
+  telemetryInit();
   drawCurrentScreen();
 }
 
@@ -111,6 +115,14 @@ telemetryInit();
 // LOOP
 // ==========================================
 void loop() {
+  // Expired or logged-out portal admin sessions also lock physical config.
+  if (!adminUnlocked() &&
+      (uiPage() == Page::AdminConfig ||
+       uiPage() == Page::AdminTankHeight ||
+       uiPage() == Page::AdminTankCapacity ||
+       uiPage() == Page::AdminThresholds)) {
+    uiGoRoot();
+  }
   updateEncoder();
   handleManualPumpTouch();
 
@@ -137,6 +149,8 @@ void loop() {
     case Page::DisplayNTP:         uiDisplayNTPTick(); break;
     case Page::Telemetry:          uiTelemetryTick(); break;
     case Page::ManagementMode:    uiManagementModeTick(); break;
+    case Page::ManagementThresholds: uiManagementThresholdsTick(); break;
+    case Page::ManagementOverride: uiManagementOverrideTick(); break;
     case Page::ManagementBuzzer:  uiManagementBuzzerTick(); break;
     case Page::ManagementRotation: uiManagementRotationTick(); break;
     case Page::NetworkStatus:     uiNetworkStatusTick(); break;

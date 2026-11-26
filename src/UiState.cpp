@@ -1,6 +1,7 @@
 #include "UiState.h"
 #include <Arduino.h>
 #include <Preferences.h>
+#include "PortalAuth.h"
 
 static Page g_stack[16];
 static uint8_t g_depth = 1;
@@ -30,10 +31,8 @@ void uiInit() {
   g_pressCount = 0;
   g_pressWindowStart = 0;
 
-  Preferences p;
-  p.begin("ui", true);
-  g_admin = p.getBool("admin", false);
-  p.end();
+  // Administrative unlock now requires a portal password session.
+  g_admin = false;
 }
 
 Page uiPage() { return g_stack[g_depth - 1]; }
@@ -47,7 +46,14 @@ void uiPop() {
   g_menuIndex = 0;
   g_scrollOffset = 0;
 }
-void uiGoRoot() { g_depth = 1; g_menuIndex = 0; g_scrollOffset = 0; }
+void uiGoRoot() {
+  g_depth = 1;
+  g_menuIndex = 0;
+  g_scrollOffset = 0;
+  g_pendingRot = 0;
+  g_pendingPress = false;
+  g_pendingLong = false;
+}
 int uiScrollOffset() { return g_scrollOffset; }
 void uiScrollBy(int direction, int maxOffset) {
   if (maxOffset < 0) maxOffset = 0;
@@ -95,51 +101,10 @@ void uiInjectRotation(int d) { g_pendingRot += d; }
 void uiInjectPress() { g_pendingPress = true; }
 void uiInjectLongPress() { g_pendingLong = true; }
 
-static void setAdmin(bool enabled) {
-  g_admin = enabled;
-  Preferences p;
-  p.begin("ui", false);
-  p.putBool("admin", enabled);
-  p.end();
-}
-
-bool adminUnlocked() { return g_admin; }
-void adminLock() {
-  setAdmin(false);
-  g_adminGestureArmed = false;
-  g_pressCount = 0;
-}
-
-void adminGestureFeed(int dir) {
-  if (uiPage() != Page::SystemInfo || g_admin) return;
-  if (dir == 0) return;
-  if (g_dirCount < 4) {
-    g_lastDirs[g_dirCount++] = dir;
-  } else {
-    for (int i = 1; i < 4; ++i) g_lastDirs[i - 1] = g_lastDirs[i];
-    g_lastDirs[3] = dir;
-  }
-
-  if (g_dirCount == 4 &&
-      g_lastDirs[0] == -g_lastDirs[1] &&
-      g_lastDirs[0] == g_lastDirs[2] &&
-      g_lastDirs[1] == g_lastDirs[3]) {
-    g_adminGestureArmed = true;
-    g_pressCount = 0;
-    g_pressWindowStart = millis();
-  }
-}
-
-void uiAdminPress() {
-  if (uiPage() != Page::SystemInfo || g_admin || !g_adminGestureArmed) return;
-  const unsigned long now = millis();
-  if (g_pressCount == 0 || now - g_pressWindowStart > 5000) {
-    g_pressWindowStart = now;
-    g_pressCount = 0;
-  }
-  if (++g_pressCount >= 5) {
-    setAdmin(true);
-    g_adminGestureArmed = false;
-    g_pressCount = 0;
-  }
-}
+// TFT configuration is authorized by a live ESP32-verified admin session.
+// The previous undocumented rotary gesture and persistent unlock flag are
+// intentionally disabled: neither can bypass the admin password.
+bool adminUnlocked() { return portalAuthLocalAdminOpen(); }
+void adminLock() { portalAuthLogout(); }
+void adminGestureFeed(int /*dir*/) {}
+void uiAdminPress() {}

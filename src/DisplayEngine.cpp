@@ -1,5 +1,6 @@
 #include "DisplayEngine.h"
 #include "Scheduler.h"
+#include "UiState.h"
 #include <Preferences.h>
 #include <Arduino.h>
 
@@ -111,6 +112,8 @@ void displayEngineTick() {
   }
 
   if (now - lastActivity < (unsigned long)timeoutSec * 1000UL) return;
+  // Always show the live dashboard before inactivity dimming.
+  if (uiPage() != Page::Dashboard) uiGoRoot();
   if (currentBrightness > BRIGHTNESS_FLOOR) {
     uint8_t next = currentBrightness > dimStep ? currentBrightness - dimStep : BRIGHTNESS_FLOOR;
     if (next < BRIGHTNESS_FLOOR) next = BRIGHTNESS_FLOOR;

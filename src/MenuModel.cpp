@@ -36,6 +36,8 @@ static const MenuItem kLayout[] = {
 };
 static const MenuItem kManagement[] = {
   {"Operating Mode", Page::ManagementMode},
+  {"Auto Thresholds", Page::ManagementThresholds},
+  {"Manual Override", Page::ManagementOverride},
   {"Buzzer Volume", Page::ManagementBuzzer},
   {"Screen Rotation", Page::ManagementRotation},
 };
@@ -51,7 +53,6 @@ static const MenuItem kClean[] = {
 static const MenuItem kAdmin[] = {
   {"Tank Height", Page::AdminTankHeight},
   {"Tank Capacity", Page::AdminTankCapacity},
-  {"Auto Thresholds", Page::AdminThresholds},
   {"LoRa Receiver", Page::AdminToggleLoRa},
   {"SSR Output", Page::AdminToggleSSR},
   {"Touch Input", Page::AdminToggleTouch},

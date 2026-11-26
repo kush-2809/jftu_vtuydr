@@ -8,10 +8,27 @@
 // ==========================================
 // TANK SETTINGS + WATER LEVEL CALCULATION
 // ==========================================
+// Aggregate capacity assumes connected tanks have a common level.
+static uint8_t configuredTankCount = 1;
+static uint32_t persistedSettingsRevision = 0;
+uint32_t tankSettingsRevision() { return persistedSettingsRevision; }
+uint8_t tankConfiguredCount() { return configuredTankCount; }
+void tankSetConfiguredCount(uint8_t count) {
+  if (count < 1 || count > 8) return;
+  configuredTankCount = count;
+}
+
 
 void loadTankSettings() {
   tankPrefs.begin("tank-config", false);
+  const bool hasSavedThresholds = tankPrefs.isKey("auto-on") && tankPrefs.isKey("auto-off");
+  persistedSettingsRevision = tankPrefs.getUInt("revision", 0);
+  Serial.printf("[Tank NVS] Saved thresholds: %s, revision: %lu\n",
+      hasSavedThresholds ? "present" : "missing (using defaults)",
+      (unsigned long)persistedSettingsRevision);
   tankHeightCm = tankPrefs.getFloat("height", 150.0f);
+  configuredTankCount = tankPrefs.getUChar("count", 1);
+  if (configuredTankCount < 1 || configuredTankCount > 8) configuredTankCount = 1;
   tankCapacityLitres = tankPrefs.getFloat("capacity", 1000.0f);
   pumpAutoOnLevel = tankPrefs.getFloat("auto-on", 30.0f);
   pumpAutoOffLevel = tankPrefs.getFloat("auto-off", 95.0f);
@@ -21,7 +38,7 @@ void loadTankSettings() {
 
   // If the persisted "was filling" flag exists, we may want to resume
   // on boot. Clear any stale override-pending flag.
-  tankPrefs.putBool("ovr-pend", false);
+  if (tankPrefs.getBool("ovr-pend", false)) tankPrefs.putBool("ovr-pend", false);
 
   if (!isfinite(pumpAutoOnLevel) ||
       pumpAutoOnLevel < 0.0f || pumpAutoOnLevel > 99.0f) {
@@ -38,6 +55,8 @@ void loadTankSettings() {
     pumpAutoOffLevel = 95.0f;
   }
 
+  Serial.printf("[Tank NVS] Loaded auto ON %.1f%%, OFF %.1f%%, override %lu min\n",
+      pumpAutoOnLevel, pumpAutoOffLevel, (unsigned long)manualOverrideMinutes);
   draftAutoOnLevel = pumpAutoOnLevel;
   draftAutoOffLevel = pumpAutoOffLevel;
 
@@ -70,11 +89,28 @@ void loadTankSettings() {
 
 void saveTankSettings() {
   tankPrefs.putFloat("height", tankHeightCm);
+  tankPrefs.putUChar("count", configuredTankCount);
   tankPrefs.putFloat("capacity", tankCapacityLitres);
   tankPrefs.putFloat("auto-on", pumpAutoOnLevel);
   tankPrefs.putFloat("auto-off", pumpAutoOffLevel);
   tankPrefs.putBool("auto-en", autoModeEnabled);
   tankPrefs.putUInt("ov-min", manualOverrideMinutes);
+  // Persisted monotonic revision lets phone and TFT detect edits made on
+  // the other interface instead of silently overwriting newer settings.
+  const uint32_t nextRevision = persistedSettingsRevision + 1;
+  if (tankPrefs.putUInt("revision", nextRevision) == sizeof(uint32_t)) {
+    persistedSettingsRevision = nextRevision;
+    const float savedOn = tankPrefs.getFloat("auto-on", NAN);
+    const float savedOff = tankPrefs.getFloat("auto-off", NAN);
+    if (!isfinite(savedOn) || !isfinite(savedOff) ||
+        fabsf(savedOn - pumpAutoOnLevel) > 0.01f ||
+        fabsf(savedOff - pumpAutoOffLevel) > 0.01f)
+      Serial.println("[Tank NVS] ERROR: saved thresholds failed readback");
+    else
+      Serial.printf("[Tank NVS] Stored ON %.1f%% OFF %.1f%% revision %lu\n",
+          savedOn, savedOff, (unsigned long)persistedSettingsRevision);
+  } else
+    Serial.println("[Tank NVS] ERROR: settings revision could not be saved");
 }
 
 void calculateWaterLevel(float measuredDistanceCm) {

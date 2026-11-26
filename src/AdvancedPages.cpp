@@ -552,12 +552,14 @@ void uiAdminTankCapacityDraw() {
 // ---------------------------------------------------------------------------
 static uint8_t thresholdStep = 0;
 static bool thresholdPageLoaded = false;
+static uint32_t thresholdBaseRevision = 0;
 
 void uiAdminThresholdsTick() {
   if (!thresholdPageLoaded) {
     draftAutoOnLevel = pumpAutoOnLevel;
     draftAutoOffLevel = pumpAutoOffLevel;
     thresholdStep = 0;
+    thresholdBaseRevision = tankSettingsRevision();
     thresholdPageLoaded = true;
   }
   const int dir = uiConsumeRotation();
@@ -568,6 +570,15 @@ void uiAdminThresholdsTick() {
     else thresholdStep = (thresholdStep + (dir > 0 ? 1 : 2)) % 3;
   }
   if (!uiConsumePress()) return;
+  if (thresholdBaseRevision != tankSettingsRevision()) {
+    // A portal save happened during this edit; use the newer saved values.
+    draftAutoOnLevel = pumpAutoOnLevel;
+    draftAutoOffLevel = pumpAutoOffLevel;
+    thresholdBaseRevision = tankSettingsRevision();
+    thresholdStep = 0;
+    buzzerBeep(120, buzzerVolume());
+    return;
+  }
   if (thresholdStep < 2) { ++thresholdStep; return; }
   if (draftAutoOffLevel >= draftAutoOnLevel + 1.0f) {
     pumpAutoOnLevel = draftAutoOnLevel;
@@ -620,10 +631,12 @@ void uiManagementThresholdsDraw() { uiAdminThresholdsDraw(); }
 
 static uint32_t managementOverrideDraft = 10;
 static bool managementOverrideLoaded = false;
+static uint32_t overrideBaseRevision = 0;
 
 void uiManagementOverrideTick() {
   if (!managementOverrideLoaded) {
     managementOverrideDraft = manualOverrideMinutes;
+    overrideBaseRevision = tankSettingsRevision();
     managementOverrideLoaded = true;
   }
   const int dir = uiConsumeRotation();
@@ -638,6 +651,12 @@ void uiManagementOverrideTick() {
         next, (int)MIN_OVERRIDE_MINUTES, (int)MAX_OVERRIDE_MINUTES);
   }
   if (uiConsumePress()) {
+    if (overrideBaseRevision != tankSettingsRevision()) {
+      managementOverrideDraft = manualOverrideMinutes;
+      overrideBaseRevision = tankSettingsRevision();
+      buzzerBeep(120, buzzerVolume());
+      return;
+    }
     manualOverrideMinutes = managementOverrideDraft;
     draftOverrideMinutes = manualOverrideMinutes;
     saveTankSettings();

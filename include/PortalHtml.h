@@ -101,7 +101,15 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <div class="panel"><small>PUMP OUTPUT</small><div class="value" id="pump">--</div><small id="pumpmode">--</small></div>
 <div class="panel"><small>LoRa SENSOR</small><div class="value" id="link">--</div><small id="distance">--</small></div>
 <div class="panel"><small>AUTOMATIC MODE</small><div class="value" id="auto">--</div><small id="thresholds">--</small></div>
-<div class="panel span2"><h2>Pump control</h2><p class="muted">Manual overrides use the controller's existing time limit and safety interlocks.</p><div class="actions"><button id="pumpStart">Start manual / test water</button><button id="pumpStop" class="danger">Stop manual override</button></div><div id="pumpmsg" class="message"></div></div>
+<div class="panel span2"><h2>Manual pump control</h2>
+<p class="muted">Start a timed manual fill. The remaining time comes from the ESP32, and automatic safety stops still apply.</p>
+<div id="manualTimerPanel" class="help" role="status" aria-live="off">
+<div class="eyebrow" id="manualTimerLabel">MANUAL PUMP · STANDBY</div>
+<div class="count" id="manualCountdown">--:--</div>
+<small id="manualTimerHelp">Select Start to begin a timed manual run.</small>
+</div>
+<div class="actions"><button type="button" id="pumpStart">Start manual</button><button type="button" id="pumpStop" class="danger">Stop manual</button></div>
+<div id="manualStartHint" class="muted"></div><div id="pumpmsg" class="message" role="status"></div></div>
 <div class="panel span2"><h2>Automatic operation</h2><p class="muted">The existing pump controller remains authoritative.</p><div class="actions"><button id="autoOn">Enable automatic</button><button id="autoOff" class="alt">Disable automatic</button></div></div>
 <div class="panel span2"><h2>Tank configuration</h2><p class="muted">Tank count, total litres, height and pump thresholds are managed in the password-protected Configuration tab.</p><div class="actions"><button class="alt" type="button" id="openTankConfig">Open configuration</button></div></div>
 <div class="panel span2"><h2>Time & weather</h2><div class="weather"><div class="value" id="temperature">--°C</div><div><div id="weatherText">Weather unavailable</div><small id="weatherPlace">Choose a city in Time & Weather</small></div></div><div class="divider"></div><small>Forecast requires internet. Device clock uses NTP when connected.</small></div>
@@ -208,6 +216,7 @@ async function request(url,method,body){
   const opts={method:method||"GET",cache:"no-store",credentials:"same-origin",headers:{}};
   if(body){opts.headers["Content-Type"]="application/x-www-form-urlencoded";opts.body=new URLSearchParams(body);}
   if(url==="/api/operating-settings" && method==="POST")opts.headers["X-SmartTank-Settings"]="1";
+  if(["/api/pump/start","/api/pump/stop","/api/auto"].includes(url) && method==="POST")opts.headers["X-SmartTank-Control"]="1";
   const res=await fetch(url,opts),txt=await res.text();
   if(!res.ok)throw Error(txt||("HTTP "+res.status));
   try{return JSON.parse(txt);}catch{return txt;}
@@ -401,6 +410,7 @@ async function refresh(){
     const d=await request("/api/status");$("level").textContent=d.sensorConnected&&d.sensorValid&&d.levelValid?d.level.toFixed(1)+"%":"--%";
     $("volume").textContent=d.sensorConnected&&d.sensorValid&&d.levelValid?d.volume.toFixed(0)+" / "+d.capacity.toFixed(0)+" L":"Level unavailable";
     $("pump").textContent=d.pumpOn?"ON":"OFF";$("pumpmode").textContent=d.override?"Manual override":d.autoState;
+    updateManualCountdown(d);
     $("link").textContent=d.sensorConnected?"ONLINE":"OFFLINE";
     $("distance").textContent=d.sensorValid?"Distance: "+d.distance.toFixed(1)+" cm":"Sensor data unavailable";
     $("auto").textContent=d.autoEnabled?"ENABLED":"DISABLED";
@@ -438,15 +448,49 @@ async function refresh(){
     $("tankLinkState").textContent="Controller connection lost · water level unavailable";
   }
 }
-async function act(path,body,msg){
- if(adminRequired())return;
- try{msg.textContent=await request(path,"POST",body||{});refresh();}
- catch(err){msg.textContent="Error: "+err.message;}
+let manualCountdownSnapshot={active:false,remaining:0,at:0};
+function manualTimerFormat(sec){
+ sec=Math.max(0,Math.ceil(sec));
+ return String(Math.floor(sec/60)).padStart(2,"0")+":"+String(sec%60).padStart(2,"0");
 }
-$("pumpStart").onclick=()=>act("/api/pump/start",{},$("pumpmsg"));
-$("pumpStop").onclick=()=>act("/api/pump/stop",{},$("pumpmsg"));
-$("autoOn").onclick=()=>act("/api/auto",{enabled:"1"},$("pumpmsg"));
-$("autoOff").onclick=()=>act("/api/auto",{enabled:"0"},$("pumpmsg"));
+function updateManualCountdown(d){
+ const active=Boolean(d.override&&d.pumpOn);
+ manualCountdownSnapshot={
+  active,remaining:active?Number(d.manualRemainingSeconds)||0:0,
+  at:performance.now()
+ };
+ $("pumpStart").disabled=active;
+ $("pumpStop").disabled=!active;
+ $("manualTimerLabel").textContent=active?"MANUAL PUMP · RUNNING":"MANUAL PUMP · STANDBY";
+ $("manualTimerHelp").textContent=active?
+   "Controller safety stops may end the run before the timer reaches zero.":
+   "Configured duration: "+d.overrideMinutes+" min";
+ const reasons=[];
+ if(!d.manualAllowed)reasons.push("Select Auto + manual or All functions in TFT Management > Operating Mode");
+ if(!d.ssrEnabled)reasons.push("SSR output disabled in Configuration");
+ if(!d.sensorConnected||!d.sensorValid||!d.levelValid)reasons.push("LoRa sensor not ready");
+ if(d.levelValid&&d.level>=d.autoOff)reasons.push("Tank has reached OFF threshold");
+ $("manualStartHint").textContent=active?"Manual run in progress":reasons.join(" · ");
+ paintManualCountdown();
+}
+function paintManualCountdown(){
+ const d=manualCountdownSnapshot;
+ const remaining=d.active?Math.max(0,d.remaining-Math.floor((performance.now()-d.at)/1000)):0;
+ $("manualCountdown").textContent=d.active?manualTimerFormat(remaining):"--:--";
+}
+setInterval(paintManualCountdown,250);
+async function controllerAction(path,body){
+ const msg=$("pumpmsg");
+ try{
+  msg.textContent="Sending request to SmartTank...";
+  msg.textContent=await request(path,"POST",body||{});
+ }catch(err){msg.textContent="Cannot complete action: "+err.message;}
+ await refresh();
+}
+$("pumpStart").onclick=()=>controllerAction("/api/pump/start",{});
+$("pumpStop").onclick=()=>controllerAction("/api/pump/stop",{});
+$("autoOn").onclick=()=>controllerAction("/api/auto",{enabled:"1"});
+$("autoOff").onclick=()=>controllerAction("/api/auto",{enabled:"0"});
 $("tankForm").onsubmit=async e=>{
  e.preventDefault();
  if(adminRequired())return;

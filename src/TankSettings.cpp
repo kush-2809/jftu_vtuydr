@@ -107,7 +107,7 @@ void saveTankSettings() {
         fabsf(savedOff - pumpAutoOffLevel) > 0.01f)
       Serial.println("[Tank NVS] ERROR: saved thresholds failed readback");
     else
-      Serial.printf("[Tank NVS] Stored ON %.1f%% OFF %.1f%% revision %lu\\n",
+      Serial.printf("[Tank NVS] Stored ON %.1f%% OFF %.1f%% revision %lu\n",
           savedOn, savedOff, (unsigned long)persistedSettingsRevision);
   } else
     Serial.println("[Tank NVS] ERROR: settings revision could not be saved");

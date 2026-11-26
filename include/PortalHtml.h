@@ -4,6 +4,8 @@ const char SMARTTANK_PORTAL_HTML[] PROGMEM = R"stportal(
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#081320"><title>SmartTank · Control Center</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/favicon.png">
 <style>
 :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:dark;--bg:#081320;--panel:#111f30;--panel2:#182c42;--border:#2a4055;--text:#edf6fb;--muted:#94aabe;--accent:#19c9b2;--red:#f57886;--amber:#f8bd67}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top right,#112e42,var(--bg) 55%);color:var(--text);min-height:100vh}main{max-width:1180px;margin:0 auto;padding:24px}
@@ -50,6 +52,37 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 @media(max-width:540px){.tank-stage{gap:12px}.tank-shell{width:116px;height:184px}.tank-readout{min-width:125px}.tank-editor{margin:0 auto}.tank-control-layout{gap:10px;padding:12px 0}}
 @media(prefers-reduced-motion:reduce){.tank-water,.tank-water:before,.tank-water:after{animation:none!important;transition:none!important}}
 
+
+/* App shell: header + navigation remain stationary; only content scrolls. */
+html,body{width:100%;height:100%;overflow:hidden}
+body{min-height:0}
+main{height:100vh;height:100dvh;max-width:1220px;padding:14px 22px 0;display:flex;flex-direction:column;min-height:0}
+#app{display:flex;flex-direction:column;min-height:0;flex:1;overflow:hidden}
+.top{flex:none;margin-bottom:12px;border-radius:16px;position:relative;z-index:2;padding:14px 18px}
+.brand{display:flex;gap:12px;align-items:center;min-width:0}
+.brand-logo{width:48px;height:48px;object-fit:contain;flex:none;border-radius:12px;background:#0b2736;padding:5px}
+.brand-icon-fallback{width:48px;height:48px;border-radius:12px;flex:none;background:linear-gradient(145deg,#1cb7b5,#1475bb);color:#eafffb;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:20px}
+.brand h1{font-size:clamp(20px,2.5vw,28px)}
+.brand .eyebrow{font-size:10px}
+.nav{flex:none;overflow-x:auto;flex-wrap:nowrap;overscroll-behavior-x:contain;margin:0 0 10px;padding-bottom:6px;scrollbar-width:thin}
+.nav button{white-space:nowrap;flex:none}
+#pageViewport{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:3px 3px 18px;scrollbar-width:thin;scrollbar-color:#39586e transparent}
+#pageViewport .page{min-height:100%}
+#pageViewport footer{padding-bottom:10px}
+@media(max-width:540px){
+ main{padding:8px 9px 0}
+ .top{padding:10px 12px;margin-bottom:8px;align-items:center}
+ .brand{gap:8px}
+ .brand-logo,.brand-icon-fallback{height:38px;width:38px;border-radius:10px}
+ .brand h1{font-size:20px}
+ .brand .eyebrow{font-size:8px;letter-spacing:.07em}
+ .brand .muted{font-size:11px}
+ .top .chip{padding:6px 8px;font-size:10px}
+ .top #clock{font-size:10px}
+ .nav{margin-bottom:7px}
+ #pageViewport{padding:2px 0 10px}
+}
+
 </style></head><body><main>
 <section id="loginBox" class="panel auth hidden" role="dialog" aria-label="Administrator unlock">
 <div class="eyebrow">SMART HOME · WATER MANAGEMENT</div><h1>SmartTank</h1>
@@ -70,7 +103,7 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <button type="submit">Save new password</button></form><div id="changeMsg" class="message"></div>
 </section>
 <div id="app">
-<header class="top panel"><div><div class="eyebrow">SMART HOME · WATER MANAGEMENT</div><h1>SmartTank</h1><div class="muted">Local water monitoring & control</div></div>
+<header class="top panel"><div class="brand"><img class="brand-logo" src="/logo.png" alt="SmartTank logo" onerror="this.hidden=true;document.getElementById('brandFallback').hidden=false"><span class="brand-icon-fallback" id="brandFallback" hidden>ST</span><div><div class="eyebrow">SMART HOME · WATER MANAGEMENT</div><h1>SmartTank</h1><div class="muted">Local water monitoring & control</div></div></div>
 <div style="text-align:right"><div class="chip" id="net">Connecting…</div><div class="muted" id="clock" style="margin-top:8px">--:--:--</div></div></header>
 <nav class="nav" aria-label="Sections">
 <button type="button" data-page="overview" class="active">Overview</button>
@@ -82,6 +115,7 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <button type="button" data-page="security">Security</button>
 <button type="button" data-page="configuration">Configuration <span aria-hidden="true">🔒</span></button>
 </nav>
+<div id="pageViewport" tabindex="-1" aria-label="Page content">
 <section id="overview" class="page active">
 <div id="retryAlert" class="panel alert hidden" style="margin-bottom:14px">
 <strong>Water supply not detected</strong><p>The pump was stopped because the tank level did not rise. SmartTank will retry according to your schedule.</p>
@@ -206,7 +240,7 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <p class="muted">The total litres estimate assumes linked tanks rise and fall together. It is not an independent measurement of every tank. Auto filling and dry-run safety still use the one validated level signal.</p>
 </div></section>
 <footer>SmartTank · Local ESP32-S3 portal · Pump safety remains in firmware · Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" style="color:#73ddca">Open-Meteo</a></footer>
-</div></main>
+</div></div></main>
 <script>
 "use strict";
 const $=id=>document.getElementById(id);
@@ -323,6 +357,7 @@ function showAuth(mode){
 function switchPage(id){
  document.querySelectorAll(".page").forEach(el=>el.classList.toggle("active",el.id===id));
  document.querySelectorAll("[data-page]").forEach(el=>el.classList.toggle("active",el.dataset.page===id));
+ $("pageViewport").scrollTop=0;
  if(id==="settings"){
   // Do not silently discard an in-progress edit when navigating tabs.
   refresh();

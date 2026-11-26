@@ -187,7 +187,14 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <button type="submit">Save tank configuration</button><div id="settingsmsg" class="message" role="status"></div>
 </form></div>
 <div class="panel">
-<h2>Configuration details</h2>
+<h2>Backup and recovery</h2>
+<p class="muted">Download a tank-settings backup before flashing or changing partitions. Restore a saved backup here after administrator unlock. This covers tank count, total litres, sensor height, ON/OFF thresholds and manual override time—not Wi-Fi credentials or passwords.</p>
+<div class="actions"><button type="button" class="alt" id="downloadBackupAdmin">Download tank settings</button></div>
+<label for="restoreBackupFile">Restore from SmartTank JSON backup</label>
+<input type="file" accept=".json,application/json" id="restoreBackupFile">
+<button type="button" id="restoreBackupBtn">Restore saved tank settings</button>
+<div id="backupRestoreMsg" class="message" role="status"></div>
+<div class="divider"></div><h2>Configuration details</h2>
 <p class="muted">The total litres estimate assumes linked tanks rise and fall together. It is not an independent measurement of every tank. Auto filling and dry-run safety still use the one validated level signal.</p>
 </div></section>
 <footer>SmartTank · Local ESP32-S3 portal · Pump safety remains in firmware · Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" style="color:#73ddca">Open-Meteo</a></footer>
@@ -462,6 +469,46 @@ $("reloadOperating").onclick=()=>{
  operatingRevision=null;
  $("operatingMsg").textContent="Reloading saved settings…";
  refresh();
+};
+$("downloadBackupAdmin").onclick=()=>$("downloadBackup").click();
+$("restoreBackupBtn").onclick=async()=>{
+ if(adminRequired())return;
+ const input=$("restoreBackupFile"),file=input.files&&input.files[0];
+ if(!file){$("backupRestoreMsg").textContent="Select a JSON backup file first.";return;}
+ if(file.size>16384){$("backupRestoreMsg").textContent="Backup file is too large.";return;}
+ try{
+  const backup=JSON.parse(await file.text());
+  const count=Number(backup.tankCount),capacity=Number(backup.capacityLitres),
+        height=Number(backup.heightCm),on=Number(backup.autoOn),
+        off=Number(backup.autoOff),mins=Number(backup.overrideMinutes);
+  if(backup.format!=="SmartTankSettingsBackup"||backup.version!==1||
+     !Number.isInteger(count)||count<1||count>8||
+     !Number.isFinite(capacity)||capacity<1||capacity>100000||
+     !Number.isFinite(height)||height<20||height>500||
+     !Number.isFinite(on)||on<0||on>99||
+     !Number.isFinite(off)||off>100||off-on<1||
+     !Number.isInteger(mins)||mins<1||mins>120)
+    throw Error("Invalid or unsupported SmartTank tank-settings backup.");
+  if(!confirm("Restore tank setup and operating thresholds from this file? Existing saved values will be replaced."))return;
+  $("backupRestoreMsg").textContent="Restoring tank configuration…";
+  // Admin-protected calibration is restored first. A subsequent status read
+  // provides the new NVS revision for the operating settings update.
+  await request("/api/settings","POST",{
+    tankCount:String(count),capacity:String(capacity),height:String(height)
+  });
+  const current=await request("/api/status");
+  await request("/api/operating-settings","POST",{
+    on:String(on),off:String(off),minutes:String(mins),
+    revision:String(current.settingsRevision)
+  });
+  tankDirty=false;operatingDirty=false;
+  await refresh();
+  $("backupRestoreMsg").textContent="Tank configuration restored to ESP32. Check values in Settings.";
+  input.value="";
+ }catch(err){
+  $("backupRestoreMsg").textContent="Restore not completed: "+err.message+
+    ". Check current settings before retrying.";
+ }
 };
 $("downloadBackup").onclick=async()=>{
  try{

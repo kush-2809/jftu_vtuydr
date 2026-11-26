@@ -137,6 +137,7 @@ let loc={city:"",country:"",lat:0,lon:0,tz:"",offset:330}, weatherUpdated=0;
 async function request(url,method,body){
   const opts={method:method||"GET",cache:"no-store",credentials:"same-origin",headers:{}};
   if(body){opts.headers["Content-Type"]="application/x-www-form-urlencoded";opts.body=new URLSearchParams(body);}
+  if(url==="/api/operating-settings" && method==="POST")opts.headers["X-SmartTank-Settings"]="1";
   const res=await fetch(url,opts),txt=await res.text();
   if(!res.ok)throw Error(txt||("HTTP "+res.status));
   try{return JSON.parse(txt);}catch{return txt;}
@@ -170,6 +171,7 @@ function showAuth(mode){
 function switchPage(id){
  document.querySelectorAll(".page").forEach(el=>el.classList.toggle("active",el.id===id));
  document.querySelectorAll("[data-page]").forEach(el=>el.classList.toggle("active",el.dataset.page===id));
+ if(id==="settings"){operatingDirty=false;refresh();}
  if(id==="display")loadDisplay(true);
  if(id==="network")loadNetwork().catch(()=>{});
  if(id==="location")loadLocation().catch(()=>{});

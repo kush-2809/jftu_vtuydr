@@ -10,6 +10,46 @@ const char SMARTTANK_PORTAL_HTML[] PROGMEM = R"stportal(
 h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17px;margin:0 0 14px}p{line-height:1.55}button,input,select{font:inherit}button{cursor:pointer;background:var(--accent);color:#052324;border:0;border-radius:10px;padding:11px 16px;font-weight:700}button:hover{filter:brightness(1.13)}button:disabled{opacity:.5;cursor:wait}button.alt{background:#2b4459;color:var(--text)}button.danger{background:#a94855;color:#fff}input,select{display:block;width:100%;padding:11px 12px;margin:6px 0 15px;border-radius:10px;border:1px solid #38556b;background:#091727;color:var(--text);min-width:0}input:focus,select:focus{outline:2px solid var(--accent)}label{font-size:13px;color:#c1d3e0}small,.muted{font-size:13px;color:var(--muted)}.panel{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:20px;min-width:0}.top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px}.eyebrow{font-size:11px;font-weight:800;letter-spacing:.17em;color:var(--accent)}.chip{border-radius:99px;border:1px solid #296754;background:#163b37;padding:9px 13px;font-size:12px;color:#8ae7c9}.nav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}.nav button{background:#162b3d;color:#b8d1df;border:1px solid var(--border)}.nav button.active{color:#082323;background:var(--accent)}.page{display:none}.page.active{display:block}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}.grid .span2{grid-column:span 2}.value{font-size:clamp(25px,4vw,36px);font-weight:800;letter-spacing:-.04em;margin:8px 0}.accent{color:var(--accent)}.muted{overflow-wrap:anywhere}.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin:9px 0}.alert{background:#442131;border-color:#a64b5e}.alert strong{color:#ffb6bd}.count{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}.network{width:100%;display:flex;align-items:center;justify-content:space-between;gap:15px;margin:5px 0;background:var(--panel2);color:var(--text);text-align:left}.network small{white-space:nowrap}.hidden,[hidden]{display:none!important}.auth{max-width:460px;margin:8vh auto}.message{min-height:20px;margin:8px 0;color:var(--muted);font-size:13px}.help{padding:12px;background:#1b3444;border-radius:9px;font-size:13px;color:#bfd6e0;margin:8px 0}.divider{height:1px;background:var(--border);margin:19px 0}.weather{display:flex;align-items:center;gap:10px}.weather .value{margin:0}footer{font-size:12px;color:var(--muted);margin-top:20px}
 @media(max-width:880px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:540px){main{padding:10px}.top{align-items:flex-start;padding:16px}.grid{grid-template-columns:minmax(0,1fr)}.grid .span2{grid-column:auto}.row{grid-template-columns:minmax(0,1fr);gap:0}.panel{padding:16px;border-radius:14px}.nav{flex-wrap:nowrap;overflow:auto}.nav button{white-space:nowrap}button{min-height:42px}}
 .auth{position:fixed;z-index:20;top:50%;left:50%;transform:translate(-50%,-50%);width:min(94vw,460px);margin:0;box-shadow:0 0 0 200vmax #020a12cc,0 28px 80px #000a}
+
+/* Fluid tank visualizations are deliberately CSS-only: no images or canvas
+   bandwidth required on the ESP32 captive portal. */
+.tank-stage{display:flex;align-items:center;justify-content:center;gap:22px;flex-wrap:wrap;padding:12px 0 6px}
+.tank-shell{--fill:0%;position:relative;width:144px;height:215px;border:5px solid #6b9db7;border-radius:22px 22px 28px 28px;background:linear-gradient(110deg,#0d2636 5%,#16374a 35%,#091a29 100%);box-shadow:inset 7px 0 20px #a1e9ff15,inset -11px 0 17px #00101c91,0 18px 34px #0005;isolation:isolate;overflow:hidden;flex:none}
+.tank-shell:before{content:"";position:absolute;inset:7px auto 7px 9px;width:10px;background:linear-gradient(90deg,#ffffff45,#ffffff03);border-radius:16px;z-index:4;pointer-events:none}
+.tank-shell:after{content:"";position:absolute;inset:8px 9px 8px auto;width:3px;background:#9ceaff48;border-radius:7px;z-index:4;pointer-events:none}
+.tank-cap{position:absolute;top:-5px;left:24%;width:52%;height:9px;background:#80b6cc;border-radius:0 0 8px 8px;z-index:6}
+.tank-water{position:absolute;left:0;right:0;bottom:0;height:var(--fill);background:linear-gradient(180deg,#4edce6,#1182c4 38%,#10559c 100%);transition:height 900ms cubic-bezier(.25,.8,.25,1);z-index:1}
+.tank-water:before,.tank-water:after{content:"";position:absolute;left:-25%;width:150%;height:17px;border-radius:45%;top:-8px;background:#91f8f8b5;animation:tank-sway 3.2s ease-in-out infinite alternate}
+.tank-water:after{top:-4px;background:#30c9e8b5;animation-duration:2.3s;animation-direction:alternate-reverse}
+.tank-ruler{position:absolute;inset:15px 9px;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none;z-index:3}
+.tank-ruler span{width:13px;border-top:1px solid #b9e6ef8c;display:block}
+.tank-readout{min-width:140px;max-width:250px;flex:1}
+.tank-readout .value{font-variant-numeric:tabular-nums}
+.tank-readout strong{color:var(--accent)}
+.tank-unavailable .tank-water{height:0!important}
+.tank-unavailable .tank-shell{opacity:.75}
+.tank-unavailable .tank-ruler span{border-color:#f8bd6780}
+@keyframes tank-sway{from{transform:translateX(-8px) rotate(-1deg)}to{transform:translateX(9px) rotate(1deg)}}
+.tank-control-layout{display:flex;gap:26px;align-items:center;flex-wrap:wrap;padding:18px 8px 12px}
+.tank-editor{width:188px;height:292px;position:relative;flex:none;touch-action:none;user-select:none}
+.tank-editor .tank-shell{position:absolute;left:26px;top:4px;width:136px;height:272px}
+.tank-editor .tank-ruler{inset:13px 7px}
+.tank-editor .tank-water{height:0}
+.tank-handle{position:absolute;left:0;right:0;height:30px;display:flex;align-items:center;justify-content:flex-end;gap:6px;transform:translateY(-50%);z-index:8;cursor:ns-resize;touch-action:none;outline-offset:3px}
+.tank-handle:before{content:"";position:absolute;left:29px;right:26px;top:50%;border-top:2px dashed currentColor;opacity:.9}
+.tank-handle span{position:relative;color:#081320;padding:4px 6px;border-radius:7px;min-width:60px;text-align:center;font-size:12px;font-weight:800;box-shadow:0 3px 9px #0008}
+.tank-handle[data-handle="on"]{color:#f8bd67}
+.tank-handle[data-handle="off"]{color:#65e7cc}
+.tank-handle[data-handle="on"] span{background:#f8bd67}
+.tank-handle[data-handle="off"] span{background:#65e7cc}
+.tank-handle:focus-visible span{outline:3px solid white;outline-offset:2px}
+.tank-editor .tank-cap{left:43%;width:40%;top:0}
+.threshold-side{min-width:min(100%,260px);flex:1}
+.threshold-legend{display:flex;align-items:center;gap:9px;margin:7px 0;color:var(--muted);font-size:13px}
+.threshold-legend i{display:block;width:12px;height:12px;border-radius:4px}
+@media(max-width:540px){.tank-stage{gap:12px}.tank-shell{width:116px;height:184px}.tank-readout{min-width:125px}.tank-editor{margin:0 auto}.tank-control-layout{gap:10px;padding:12px 0}}
+@media(prefers-reduced-motion:reduce){.tank-water,.tank-water:before,.tank-water:after{animation:none!important;transition:none!important}}
+
 </style></head><body><main>
 <section id="loginBox" class="panel auth hidden" role="dialog" aria-label="Administrator unlock">
 <div class="eyebrow">SMART HOME · WATER MANAGEMENT</div><h1>SmartTank</h1>
@@ -49,7 +89,15 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <small>To change the retry time, use System Retry on the TFT display.</small>
 </div>
 <div class="grid">
-<div class="panel"><small>WATER LEVEL</small><div class="value accent" id="level">--%</div><small id="volume">Waiting for sensor</small></div>
+<div class="panel span2" id="overviewTank">
+<h2>Live tank level</h2>
+<div class="tank-stage">
+<div class="tank-shell" aria-hidden="true"><div class="tank-cap"></div><div id="liveWater" class="tank-water"></div>
+<div class="tank-ruler"><span></span><span></span><span></span><span></span><span></span></div></div>
+<div class="tank-readout"><small>MEASURED WATER</small><div class="value accent" id="level">--%</div>
+<div id="volume">Waiting for sensor</div><div class="message" id="tankLinkState">Connecting to LoRa sensor…</div>
+<small id="tankCountText">Tank configuration loading…</small></div>
+</div></div>
 <div class="panel"><small>PUMP OUTPUT</small><div class="value" id="pump">--</div><small id="pumpmode">--</small></div>
 <div class="panel"><small>LoRa SENSOR</small><div class="value" id="link">--</div><small id="distance">--</small></div>
 <div class="panel"><small>AUTOMATIC MODE</small><div class="value" id="auto">--</div><small id="thresholds">--</small></div>
@@ -64,6 +112,19 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <h2>Automatic filling & manual override</h2>
 <p class="muted">Change everyday pump thresholds and manual-run duration here. Changes are saved to the ESP32 and also appear in Management on its TFT screen.</p>
 <form id="operatingForm">
+<div class="tank-control-layout">
+<div class="tank-editor" id="thresholdTank" aria-label="Drag the two threshold markers to adjust automatic filling levels">
+<div class="tank-shell" aria-hidden="true"><div class="tank-cap"></div><div class="tank-water" id="settingsWater"></div><div class="tank-ruler"><span></span><span></span><span></span><span></span><span></span></div></div>
+<div class="tank-handle" id="handleOff" data-handle="off" role="slider" tabindex="0" aria-label="Stop filling at percentage" aria-valuemin="1" aria-valuemax="100"><span id="offHandleText">OFF 95%</span></div>
+<div class="tank-handle" id="handleOn" data-handle="on" role="slider" tabindex="0" aria-label="Start filling below percentage" aria-valuemin="0" aria-valuemax="99"><span id="onHandleText">ON 30%</span></div>
+</div>
+<div class="threshold-side"><h2>Drag to adjust</h2>
+<p class="muted">Move the two markers up or down to choose when the pump starts and stops.</p>
+<div class="threshold-legend"><i style="background:#65e7cc"></i> OFF marker — stop filling</div>
+<div class="threshold-legend"><i style="background:#f8bd67"></i> ON marker — start filling</div>
+<div class="help">Dragging only changes the preview. Your controller keeps its existing settings until you press Save.</div>
+</div>
+</div>
 <div class="row">
 <div><label for="on">Start automatic filling below (%)</label><input id="on" type="number" step=".5" min="0" max="99" required></div>
 <div><label for="off">Stop automatic filling at (%)</label><input id="off" type="number" step=".5" min="1" max="100" required></div>
@@ -142,6 +203,77 @@ async function request(url,method,body){
   if(!res.ok)throw Error(txt||("HTTP "+res.status));
   try{return JSON.parse(txt);}catch{return txt;}
 }
+
+// Both tank graphics use the S3 measurement; invalid LoRa data never looks
+// like a live reading. No animation is used to invent a water level.
+let lastMeasuredLevel=null;
+function updateLiveTank(d){
+ const healthy=Boolean(d.sensorConnected&&d.sensorValid&&d.levelValid&&Number.isFinite(Number(d.level)));
+ const pct=healthy?Math.max(0,Math.min(100,Number(d.level))):null;
+ lastMeasuredLevel=pct;
+ $("liveWater").style.setProperty("--fill",(pct===null?0:pct)+"%");
+ $("overviewTank").classList.toggle("tank-unavailable",pct===null);
+ $("tankLinkState").textContent=pct===null?"Sensor offline · level unavailable":"Live LoRa measurement";
+ $("tankCountText").textContent=(Number(d.tankCount)||1)+" connected tank(s) · "+Number(d.capacity).toLocaleString()+" L configured total";
+ $("settingsWater").style.setProperty("--fill",(pct===null?0:pct)+"%");
+ $("thresholdTank").classList.toggle("tank-unavailable",pct===null);
+}
+function clampThreshold(n,min,max){return Math.max(min,Math.min(max,Math.round(n*2)/2));}
+function thresholdValues(){
+ return {on:Number($("on").value),off:Number($("off").value)};
+}
+// The visual scale is positioned against the real shell interior, 0%=bottom.
+const thresholdSurface={top:19,bottom:266};
+function renderThresholdMarkers(){
+ const {on,off}=thresholdValues();
+ if(!Number.isFinite(on)||!Number.isFinite(off))return;
+ for(const [id,val,prefix] of [["handleOn",on,"ON"],["handleOff",off,"OFF"]]){
+  const y=thresholdSurface.bottom-(thresholdSurface.bottom-thresholdSurface.top)*val/100;
+  $(id).style.top=y+"px";
+  $(id).setAttribute("aria-valuenow",String(val));
+  $(id).setAttribute("aria-valuetext",val+" percent");
+  $(id==="handleOn"?"onHandleText":"offHandleText").textContent=prefix+" "+val+"%";
+ }
+}
+function changeThreshold(which,value){
+ const {on,off}=thresholdValues();
+ if(which==="on"){
+  $("on").value=String(clampThreshold(value,0,Math.min(99,Number.isFinite(off)?off-1:99)));
+ }else{
+  $("off").value=String(clampThreshold(value,Math.max(1,Number.isFinite(on)?on+1:1),100));
+ }
+ operatingDirty=true;
+ renderThresholdMarkers();
+ $("operatingMsg").textContent="Unsaved changes · press Save to apply";
+}
+for(const which of ["on","off"]){
+ const handle=$(which==="on"?"handleOn":"handleOff");
+ handle.addEventListener("pointerdown",e=>{
+  if(e.button!==0&&e.pointerType==="mouse")return;
+  e.preventDefault();handle.setPointerCapture(e.pointerId);
+  const move=ev=>{
+   const rect=$("thresholdTank").getBoundingClientRect();
+   const y=ev.clientY-rect.top;
+   const pct=(thresholdSurface.bottom-y)*100/(thresholdSurface.bottom-thresholdSurface.top);
+   changeThreshold(which,pct);
+  };
+  move(e);
+  const stop=()=>{handle.removeEventListener("pointermove",move);handle.removeEventListener("pointerup",stop);handle.removeEventListener("pointercancel",stop)};
+  handle.addEventListener("pointermove",move);
+  handle.addEventListener("pointerup",stop);
+  handle.addEventListener("pointercancel",stop);
+ });
+ handle.addEventListener("keydown",e=>{
+  const step=e.shiftKey?5:0.5;
+  const now=Number($(which).value);
+  if(e.key==="ArrowUp"||e.key==="ArrowRight"){e.preventDefault();changeThreshold(which,now+step)}
+  if(e.key==="ArrowDown"||e.key==="ArrowLeft"){e.preventDefault();changeThreshold(which,now-step)}
+ });
+}
+for(const id of ["on","off"]){
+ $(id).addEventListener("input",()=>{renderThresholdMarkers();$("operatingMsg").textContent="Unsaved changes · press Save to apply";});
+}
+
 let operatingDirty=false;
 $("operatingForm").addEventListener("input",()=>operatingDirty=true);
 $("operatingForm").addEventListener("change",()=>operatingDirty=true);
@@ -259,6 +391,7 @@ async function refresh(){
     $("distance").textContent=d.sensorValid?"Distance: "+d.distance.toFixed(1)+" cm":"Sensor data unavailable";
     $("auto").textContent=d.autoEnabled?"ENABLED":"DISABLED";
     $("thresholds").textContent="ON "+d.autoOn+"% · OFF "+d.autoOff+"%";
+    updateLiveTank(d);
     $("net").textContent=d.wifiConnected?"Home Wi-Fi connected":d.apActive?"Setup hotspot active":"Wi-Fi offline";
     $("wifiinfo").textContent="IP: "+d.ip+"  ·  Host: "+d.hostname;
     $("clock").textContent=d.clock;
@@ -276,8 +409,16 @@ async function refresh(){
       for(const [id,val] of Object.entries({
         on:d.autoOn,off:d.autoOff,mins:d.overrideMinutes
       })) if(document.activeElement!==$(id))$(id).value=val;
+      renderThresholdMarkers();
     }
-  }catch(err){$("net").textContent="Connection lost";}
+  }catch(err){
+    $("net").textContent="Connection lost";
+    lastMeasuredLevel=null;
+    $("overviewTank").classList.add("tank-unavailable");
+    $("liveWater").style.setProperty("--fill","0%");
+    $("settingsWater").style.setProperty("--fill","0%");
+    $("tankLinkState").textContent="Controller connection lost · water level unavailable";
+  }
 }
 async function act(path,body,msg){
  if(adminRequired())return;

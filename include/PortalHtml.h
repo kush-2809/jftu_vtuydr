@@ -34,7 +34,7 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 .tank-editor{width:188px;height:292px;position:relative;flex:none;touch-action:none;user-select:none}
 .tank-editor .tank-shell{position:absolute;left:26px;top:4px;width:136px;height:272px}
 .tank-editor .tank-ruler{inset:13px 7px}
-.tank-editor .tank-water{height:0}
+.tank-editor .tank-water{height:var(--fill)}
 .tank-handle{position:absolute;left:0;right:0;height:30px;display:flex;align-items:center;justify-content:flex-end;gap:6px;transform:translateY(-50%);z-index:8;cursor:ns-resize;touch-action:none;outline-offset:3px}
 .tank-handle:before{content:"";position:absolute;left:29px;right:26px;top:50%;border-top:2px dashed currentColor;opacity:.9}
 .tank-handle span{position:relative;color:#081320;padding:4px 6px;border-radius:7px;min-width:60px;text-align:center;font-size:12px;font-weight:800;box-shadow:0 3px 9px #0008}
@@ -384,8 +384,8 @@ function fmt(sec){
 async function refresh(){
   if($("app").classList.contains("hidden"))return;
   try{
-    const d=await request("/api/status");$("level").textContent=d.levelValid?d.level.toFixed(1)+"%":"--%";
-    $("volume").textContent=d.levelValid?d.volume.toFixed(0)+" / "+d.capacity.toFixed(0)+" L":"Level unavailable";
+    const d=await request("/api/status");$("level").textContent=d.sensorConnected&&d.sensorValid&&d.levelValid?d.level.toFixed(1)+"%":"--%";
+    $("volume").textContent=d.sensorConnected&&d.sensorValid&&d.levelValid?d.volume.toFixed(0)+" / "+d.capacity.toFixed(0)+" L":"Level unavailable";
     $("pump").textContent=d.pumpOn?"ON":"OFF";$("pumpmode").textContent=d.override?"Manual override":d.autoState;
     $("link").textContent=d.sensorConnected?"ONLINE":"OFFLINE";
     $("distance").textContent=d.sensorValid?"Distance: "+d.distance.toFixed(1)+" cm":"Sensor data unavailable";

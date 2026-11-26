@@ -518,7 +518,7 @@ $("downloadBackup").onclick=async()=>{
    savedAt:new Date().toISOString(),
    tankCount:d.tankCount,capacityLitres:d.capacity,heightCm:d.height,
    autoOn:d.autoOn,autoOff:d.autoOff,overrideMinutes:d.overrideMinutes,
-   autoEnabled:d.autoEnabled,revision:d.settingsRevision
+   revision:d.settingsRevision
   };
   const blob=new Blob([JSON.stringify(backup,null,2)],{type:"application/json"});
   const url=URL.createObjectURL(blob),a=document.createElement("a");

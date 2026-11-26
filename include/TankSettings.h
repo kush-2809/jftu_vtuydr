@@ -1,5 +1,9 @@
 #pragma once
 
+// Number of hydraulically linked tanks represented by the ONE level sensor.
+// Configured capacity is the aggregate capacity of all tanks.
+uint8_t tankConfiguredCount();
+void tankSetConfiguredCount(uint8_t count);
 void loadTankSettings();
 void saveTankSettings();
 void calculateWaterLevel(float measuredDistanceCm);

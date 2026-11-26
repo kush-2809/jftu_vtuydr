@@ -54,10 +54,7 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <div class="panel"><small>AUTOMATIC MODE</small><div class="value" id="auto">--</div><small id="thresholds">--</small></div>
 <div class="panel span2"><h2>Pump control</h2><p class="muted">Manual overrides use the controller's existing time limit and safety interlocks.</p><div class="actions"><button id="pumpStart">Start manual / test water</button><button id="pumpStop" class="danger">Stop manual override</button></div><div id="pumpmsg" class="message"></div></div>
 <div class="panel span2"><h2>Automatic operation</h2><p class="muted">The existing pump controller remains authoritative.</p><div class="actions"><button id="autoOn">Enable automatic</button><button id="autoOff" class="alt">Disable automatic</button></div></div>
-<div class="panel span2"><h2>Tank & pump settings</h2><form id="tankForm">
-<div class="row"><div><label>Auto ON threshold (%)</label><input id="on" type="number" step=".5" min="0" max="99" required></div><div><label>Auto OFF threshold (%)</label><input id="off" type="number" step=".5" min="1" max="100" required></div>
-<div><label>Manual override (minutes)</label><input id="mins" type="number" min="1" max="120" required></div><div><label>Tank height (cm)</label><input id="height" type="number" min="20" max="500" step=".5" required></div></div><label>Tank capacity (litres)</label><input id="capacity" type="number" min="1" max="100000" required>
-<button type="submit">Save tank settings</button><div id="settingsmsg" class="message"></div></form></div>
+<div class="panel span2"><h2>Tank configuration</h2><p class="muted">Tank count, total litres, height and pump thresholds are managed in the password-protected Configuration tab.</p><div class="actions"><button class="alt" type="button" id="openTankConfig">Open configuration</button></div></div>
 <div class="panel span2"><h2>Time & weather</h2><div class="weather"><div class="value" id="temperature">--°C</div><div><div id="weatherText">Weather unavailable</div><small id="weatherPlace">Choose a city in Time & Weather</small></div></div><div class="divider"></div><small>Forecast requires internet. Device clock uses NTP when connected.</small></div>
 </div></section>
 <section id="display" class="page"><div class="panel"><h2>TFT display management</h2><div class="message" id="displaySync">Reading settings from SmartTank...</div><p class="muted">Changes save directly to ESP32; rotation, brightness, timeout, theme, and sleep window are independent of portal appearance.</p><form id="displayForm">
@@ -81,12 +78,36 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <button type="submit">Find city and save time settings</button><div id="locationMsg" class="message"></div></form><div class="divider"></div><div class="weather"><div class="value" id="weatherTemperature">--°C</div><div><div id="weatherDescription">Weather unavailable</div><div class="muted" id="locationClock">--:--:--</div><div class="muted" id="weatherDevice">Display weather: checking...</div></div></div><div class="help">Weather needs internet access on the device viewing this webpage. It cannot be fetched via an offline-only setup hotspot. Time-zone offset is saved for the selected location; daylight-saving changes may need re-selection.</div></div></section>
 <section id="security" class="page"><div class="panel"><h2>Administrator security</h2><p class="muted">The password verifier and session state live on the ESP32-S3. No admin password is embedded in HTML or JavaScript.</p>
 <form id="securityForm"><label>Current admin password</label><input id="securityOld" type="password" required autocomplete="current-password"><label>New password</label><input id="securityNew" type="password" minlength="10" maxlength="64" required autocomplete="new-password"><button type="submit">Change administrator password</button><div id="securityMsg" class="message"></div></form><div class="divider"></div><button id="logout" class="alt" type="button">Log out</button></div></section>
-<section id="configuration" class="page"><div class="panel">
-<div class="eyebrow">PROTECTED SETTINGS</div><h2>Administrator access</h2>
-<p class="muted">Monitoring, telemetry and other portal tabs open without a password. Unlock here only when you need to save configuration or control the pump.</p>
-<div id="adminState" class="help">Administrator is locked</div>
+<section id="configuration" class="page">
+<div class="panel" style="margin-bottom:14px">
+<div class="eyebrow">SMARTTANK · ADMINISTRATION</div><h2>Tank configuration</h2>
+<p class="muted">Set the installed number of connected tanks, total water storage, sensor calibration and automatic pump settings.</p>
+<div class="help" id="adminState">Administrator is locked</div>
 <div class="actions"><button type="button" id="unlockAdmin">Unlock configuration</button><button type="button" class="alt" id="lockAdmin">Lock administrator</button></div>
-<p class="muted">The initial password is changed on the first administrator login. Credentials are verified in ESP32 firmware.</p>
+</div>
+<div class="panel" style="margin-bottom:14px">
+<h2>Tank installation</h2>
+<p class="muted">The ESP32 currently measures ONE level sensor. Multiple tanks can be configured only as connected tanks sharing the same level. Separate tank-level readings require additional sensor nodes.</p>
+<form id="tankForm">
+<div class="row">
+<div><label for="tankCount">Number of connected tanks</label><select id="tankCount" required>
+<option value="1">1 tank</option><option value="2">2 tanks</option>
+<option value="3">3 tanks</option><option value="4">4 tanks</option>
+<option value="5">5 tanks</option><option value="6">6 tanks</option>
+<option value="7">7 tanks</option><option value="8">8 tanks</option>
+</select></div>
+<div><label for="capacity">Total capacity of all tanks (litres)</label><input id="capacity" type="number" min="1" max="100000" step="1" required></div>
+<div><label for="height">Tank / sensor calibration height (cm)</label><input id="height" type="number" min="20" max="500" step=".5" required></div>
+<div><label for="mins">Manual override duration (minutes)</label><input id="mins" type="number" min="1" max="120" required></div>
+<div><label for="on">Auto pump ON below (%)</label><input id="on" type="number" min="0" max="99" step=".5" required></div>
+<div><label for="off">Auto pump OFF at (%)</label><input id="off" type="number" min="1" max="100" step=".5" required></div>
+</div>
+<div class="help" id="tankPreview">Configured system capacity will appear here.</div>
+<button type="submit">Save tank configuration</button><div id="settingsmsg" class="message" role="status"></div>
+</form></div>
+<div class="panel">
+<h2>Configuration details</h2>
+<p class="muted">The total litres estimate assumes linked tanks rise and fall together. It is not an independent measurement of every tank. Auto filling and dry-run safety still use the one validated level signal.</p>
 </div></section>
 <footer>SmartTank · Local ESP32-S3 portal · Pump safety remains in firmware · Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" style="color:#73ddca">Open-Meteo</a></footer>
 </div></main>
@@ -102,6 +123,18 @@ async function request(url,method,body){
   if(!res.ok)throw Error(txt||("HTTP "+res.status));
   try{return JSON.parse(txt);}catch{return txt;}
 }
+let tankDirty=false;
+function updateTankPreview(){
+ const count=Number($("tankCount").value)||1;
+ const capacity=Number($("capacity").value)||0;
+ const each=capacity/count;
+ $("tankPreview").textContent="Configured: "+count+" connected tank"+(count===1?"":"s")+
+   " · "+capacity.toLocaleString()+" L total · about "+
+   (Number.isFinite(each)?each.toLocaleString(undefined,{maximumFractionDigits:1}):"--")+
+   " L per tank on average. Assumes a common water level.";
+}
+$("tankForm").addEventListener("input",()=>{tankDirty=true;updateTankPreview();});
+$("tankForm").addEventListener("change",()=>{tankDirty=true;updateTankPreview();});
 function syncAdminState(){
  $("adminState").textContent=adminActive?
   "Administrator unlocked · configuration changes enabled":
@@ -136,6 +169,7 @@ function switchPage(id){
  }
 }
 document.querySelectorAll("[data-page]").forEach(el=>el.onclick=()=>switchPage(el.dataset.page));
+$("openTankConfig").onclick=()=>switchPage("configuration");
 $("unlockAdmin").onclick=()=>{
  if(adminActive)return;
  pendingPage="configuration";showAuth("login");
@@ -209,8 +243,11 @@ async function refresh(){
     $("retryAlert").classList.toggle("hidden",!d.retryWarning);
     if(d.retryWarning){$("retryCountdown").textContent=fmt(d.retrySeconds);
       $("retryLabel").textContent=d.retryManual?"User-scheduled retry at "+String(d.retryHour).padStart(2,"0")+":"+String(d.retryMinute).padStart(2,"0"):"Next automatic retry";}
-    for(const [id,val] of Object.entries({on:d.autoOn,off:d.autoOff,mins:d.overrideMinutes,height:d.height,capacity:d.capacity})){
+    if(!tankDirty) {
+    for(const [id,val] of Object.entries({on:d.autoOn,off:d.autoOff,mins:d.overrideMinutes,height:d.height,capacity:d.capacity,tankCount:d.tankCount})){
       if(document.activeElement!==$(id))$(id).value=val;
+    }
+    updateTankPreview();
     }
   }catch(err){$("net").textContent="Connection lost";}
 }
@@ -223,7 +260,20 @@ $("pumpStart").onclick=()=>act("/api/pump/start",{},$("pumpmsg"));
 $("pumpStop").onclick=()=>act("/api/pump/stop",{},$("pumpmsg"));
 $("autoOn").onclick=()=>act("/api/auto",{enabled:"1"},$("pumpmsg"));
 $("autoOff").onclick=()=>act("/api/auto",{enabled:"0"},$("pumpmsg"));
-$("tankForm").onsubmit=e=>{e.preventDefault();if(adminRequired())return;const o={on:$("on").value,off:$("off").value,minutes:$("mins").value,height:$("height").value,capacity:$("capacity").value};act("/api/settings",o,$("settingsmsg"));};
+$("tankForm").onsubmit=async e=>{
+ e.preventDefault();if(adminRequired())return;
+ const o={on:$("on").value,off:$("off").value,minutes:$("mins").value,
+ height:$("height").value,capacity:$("capacity").value,tankCount:$("tankCount").value};
+ const count=Number(o.tankCount),capacity=Number(o.capacity);
+ if(!Number.isInteger(count)||count<1||count>8||!Number.isFinite(capacity)||capacity<=0){
+  $("settingsmsg").textContent="Enter a valid number of tanks and total capacity.";return;
+ }
+ try{
+  $("settingsmsg").textContent=await request("/api/settings","POST",o);
+  tankDirty=false;
+  await refresh();
+ }catch(err){$("settingsmsg").textContent="Save failed: "+err.message;}
+};
 // The ESP32 is authoritative. Editing a form temporarily pauses sync so
 // background reads never replace values the user is currently entering.
 let displayDirty=false;

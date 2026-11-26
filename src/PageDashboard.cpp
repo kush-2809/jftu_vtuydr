@@ -91,6 +91,13 @@ uint16_t pumpTint(const Theme& t) {
   if (fillingNow()) return t.ok;
   return t.accent;
 }
+String manualCountdown() {
+  const uint32_t seconds = manualOverrideRemainingSeconds();
+  char value[22];
+  snprintf(value, sizeof(value), "OFF IN %02lu:%02lu",
+      (unsigned long)(seconds / 60), (unsigned long)(seconds % 60));
+  return String(value);
+}
 String retryLabel(bool compact) {
   const uint32_t seconds = pumpRetryRemainingSeconds();
   char buf[48];
@@ -153,7 +160,8 @@ void drawPortrait(const Theme& t, const WeatherSnapshot& weather) {
   text(17, 266, warn ? "NO WATER RISE" : pumpLabel(), 2,
       warn ? TFT_WHITE : pumpTint(t), bg);
   text(17, 287, warn ? shorten(retryLabel(false), 33) :
-      (fillingNow() ? "PUMP ACTIVE" : "PUMP STANDBY"), 1,
+      (manualOverrideActive ? manualCountdown() :
+       (fillingNow() ? "PUMP ACTIVE" : "PUMP STANDBY")), 1,
       warn ? TFT_WHITE : t.muted, bg);
 }
 void drawLandscape(const Theme& t, const WeatherSnapshot& weather) {
@@ -190,7 +198,8 @@ void drawLandscape(const Theme& t, const WeatherSnapshot& weather) {
   text(17, 196, warn ? "NO WATER RISE" : pumpLabel(), 1,
       warn ? TFT_WHITE : pumpTint(t), bg);
   text(155, 196, warn ? retryLabel(true) :
-      (fillingNow() ? "PUMP ACTIVE" : "PUMP STANDBY"), 1,
+      (manualOverrideActive ? manualCountdown() :
+       (fillingNow() ? "PUMP ACTIVE" : "PUMP STANDBY")), 1,
       warn ? TFT_WHITE : t.muted, bg);
 }
 } // namespace

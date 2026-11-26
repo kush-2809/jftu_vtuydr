@@ -609,3 +609,67 @@ void uiAdminThresholdsDraw() {
   simpleFooter("ROTATE: EDIT  PRESS: NEXT / SAVE  HOLD: BACK");
   canvas.pushSprite(0, 0);
 }
+
+
+// ---------------------------------------------------------------------------
+// MANAGEMENT: AUTO THRESHOLDS + MANUAL OVERRIDE DURATION
+// Both are everyday operating settings, not administrator calibration.
+// ---------------------------------------------------------------------------
+void uiManagementThresholdsTick() { uiAdminThresholdsTick(); }
+void uiManagementThresholdsDraw() { uiAdminThresholdsDraw(); }
+
+static uint32_t managementOverrideDraft = 10;
+static bool managementOverrideLoaded = false;
+
+void uiManagementOverrideTick() {
+  if (!managementOverrideLoaded) {
+    managementOverrideDraft = manualOverrideMinutes;
+    managementOverrideLoaded = true;
+  }
+  const int dir = uiConsumeRotation();
+  if (uiConsumeLongPress()) {
+    managementOverrideLoaded = false;
+    uiPop();
+    return;
+  }
+  if (dir != 0) {
+    const int next = (int)managementOverrideDraft + dir;
+    managementOverrideDraft = (uint32_t)clampValue(
+        next, (int)MIN_OVERRIDE_MINUTES, (int)MAX_OVERRIDE_MINUTES);
+  }
+  if (uiConsumePress()) {
+    manualOverrideMinutes = managementOverrideDraft;
+    draftOverrideMinutes = manualOverrideMinutes;
+    saveTankSettings();
+    buzzerBeep(60, buzzerVolume());
+    managementOverrideLoaded = false;
+    uiPop();
+  }
+}
+
+void uiManagementOverrideDraw() {
+  const Theme& t = themeGet();
+  simpleHeader("MANUAL OVERRIDE");
+  const uint32_t shown = managementOverrideLoaded ?
+      managementOverrideDraft : manualOverrideMinutes;
+  canvas.setTextSize(1);
+  canvas.setTextColor(t.muted, t.bg);
+  canvas.setCursor(10, 52);
+  canvas.print("MAXIMUM MANUAL RUN TIME");
+  canvas.setTextSize(4);
+  canvas.setTextColor(t.accent, t.bg);
+  canvas.setCursor(12, 85);
+  canvas.printf("%lu", (unsigned long)shown);
+  canvas.setTextSize(2);
+  canvas.setTextColor(t.fg, t.bg);
+  canvas.setCursor(111, 101);
+  canvas.print("min");
+  canvas.setTextSize(1);
+  canvas.setTextColor(t.muted, t.bg);
+  canvas.setCursor(10, W > H ? 151 : 161);
+  canvas.print("Allowed: 1 - 120 minutes");
+  canvas.setCursor(10, W > H ? 167 : 184);
+  canvas.print("Pump safety interlocks still apply");
+  simpleFooter("TURN: ADJUST  PRESS: SAVE  HOLD: BACK");
+  canvas.pushSprite(0, 0);
+}

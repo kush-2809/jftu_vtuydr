@@ -7,6 +7,8 @@ void setAutoPendingOn(bool on);
 void setOverridePendingOn(bool on);
 void initializeManualPump();
 void startManualOverride();
+// Controller-authoritative remaining manual runtime (0 when not active).
+uint32_t manualOverrideRemainingSeconds();
 void stopManualOverride(const char* reason);
 void handleManualPumpTouch();
 

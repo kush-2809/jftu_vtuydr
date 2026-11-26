@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 
 // Number of hydraulically linked tanks represented by the ONE level sensor.
 // Configured capacity is the aggregate capacity of all tanks.

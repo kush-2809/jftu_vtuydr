@@ -98,9 +98,18 @@ void saveTankSettings() {
   // Persisted monotonic revision lets phone and TFT detect edits made on
   // the other interface instead of silently overwriting newer settings.
   const uint32_t nextRevision = persistedSettingsRevision + 1;
-  if (tankPrefs.putUInt("revision", nextRevision) == sizeof(uint32_t))
+  if (tankPrefs.putUInt("revision", nextRevision) == sizeof(uint32_t)) {
     persistedSettingsRevision = nextRevision;
-  else
+    const float savedOn = tankPrefs.getFloat("auto-on", NAN);
+    const float savedOff = tankPrefs.getFloat("auto-off", NAN);
+    if (!isfinite(savedOn) || !isfinite(savedOff) ||
+        fabsf(savedOn - pumpAutoOnLevel) > 0.01f ||
+        fabsf(savedOff - pumpAutoOffLevel) > 0.01f)
+      Serial.println("[Tank NVS] ERROR: saved thresholds failed readback");
+    else
+      Serial.printf("[Tank NVS] Stored ON %.1f%% OFF %.1f%% revision %lu\\n",
+          savedOn, savedOff, (unsigned long)persistedSettingsRevision);
+  } else
     Serial.println("[Tank NVS] ERROR: settings revision could not be saved");
 }
 

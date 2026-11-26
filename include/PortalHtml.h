@@ -35,6 +35,7 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <nav class="nav" aria-label="Sections">
 <button type="button" data-page="overview" class="active">Overview</button>
 <button type="button" data-page="display">Display</button>
+<button type="button" data-page="settings">Settings</button>
 <button type="button" data-page="wifi">Wi-Fi</button>
 <button type="button" data-page="network">Network</button>
 <button type="button" data-page="location">Time & Weather</button>
@@ -57,6 +58,23 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <div class="panel span2"><h2>Tank configuration</h2><p class="muted">Tank count, total litres, height and pump thresholds are managed in the password-protected Configuration tab.</p><div class="actions"><button class="alt" type="button" id="openTankConfig">Open configuration</button></div></div>
 <div class="panel span2"><h2>Time & weather</h2><div class="weather"><div class="value" id="temperature">--°C</div><div><div id="weatherText">Weather unavailable</div><small id="weatherPlace">Choose a city in Time & Weather</small></div></div><div class="divider"></div><small>Forecast requires internet. Device clock uses NTP when connected.</small></div>
 </div></section>
+<section id="settings" class="page">
+<div class="panel" style="margin-bottom:14px">
+<div class="eyebrow">SMARTTANK · OPERATING SETTINGS</div>
+<h2>Automatic filling & manual override</h2>
+<p class="muted">Change everyday pump thresholds and manual-run duration here. Changes are saved to the ESP32 and also appear in Management on its TFT screen.</p>
+<form id="operatingForm">
+<div class="row">
+<div><label for="on">Start automatic filling below (%)</label><input id="on" type="number" step=".5" min="0" max="99" required></div>
+<div><label for="off">Stop automatic filling at (%)</label><input id="off" type="number" step=".5" min="1" max="100" required></div>
+<div><label for="mins">Manual override maximum (minutes)</label><input id="mins" type="number" min="1" max="120" step="1" required></div>
+</div>
+<div class="help">Safety requirement: OFF must exceed ON by at least 1%. Manual operation still follows the pump controller's safety limits.</div>
+<button type="submit">Save operating settings</button>
+<div id="operatingMsg" class="message" role="status"></div>
+</form>
+</div>
+</section>
 <section id="display" class="page"><div class="panel"><h2>TFT display management</h2><div class="message" id="displaySync">Reading settings from SmartTank...</div><p class="muted">Changes save directly to ESP32; rotation, brightness, timeout, theme, and sleep window are independent of portal appearance.</p><form id="displayForm">
 <div class="row">
 <div><label>Screen orientation</label><select id="rotation"><option value="0">Portrait · 0°</option><option value="1">Landscape · 90°</option><option value="2">Portrait · 180°</option><option value="3">Landscape · 270°</option></select></div>
@@ -81,7 +99,7 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <section id="configuration" class="page">
 <div class="panel" style="margin-bottom:14px">
 <div class="eyebrow">SMARTTANK · ADMINISTRATION</div><h2>Tank configuration</h2>
-<p class="muted">Set the installed number of connected tanks, total water storage, sensor calibration and automatic pump settings.</p>
+<p class="muted">Set installed tank count, total storage and sensor calibration. For pump thresholds and manual override, use the Settings tab.</p>
 <div class="help" id="adminState">Administrator is locked</div>
 <div class="actions"><button type="button" id="unlockAdmin">Unlock configuration</button><button type="button" class="alt" id="lockAdmin">Lock administrator</button></div>
 </div>
@@ -98,9 +116,9 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 </select></div>
 <div><label for="capacity">Total capacity of all tanks (litres)</label><input id="capacity" type="number" min="1" max="100000" step="1" required></div>
 <div><label for="height">Tank / sensor calibration height (cm)</label><input id="height" type="number" min="20" max="500" step=".5" required></div>
-<div><label for="mins">Manual override duration (minutes)</label><input id="mins" type="number" min="1" max="120" required></div>
-<div><label for="on">Auto pump ON below (%)</label><input id="on" type="number" min="0" max="99" step=".5" required></div>
-<div><label for="off">Auto pump OFF at (%)</label><input id="off" type="number" min="1" max="100" step=".5" required></div>
+
+
+
 </div>
 <div class="help" id="tankPreview">Configured system capacity will appear here.</div>
 <button type="submit">Save tank configuration</button><div id="settingsmsg" class="message" role="status"></div>
@@ -123,6 +141,9 @@ async function request(url,method,body){
   if(!res.ok)throw Error(txt||("HTTP "+res.status));
   try{return JSON.parse(txt);}catch{return txt;}
 }
+let operatingDirty=false;
+$("operatingForm").addEventListener("input",()=>operatingDirty=true);
+$("operatingForm").addEventListener("change",()=>operatingDirty=true);
 let tankDirty=false;
 function updateTankPreview(){
  const count=Number($("tankCount").value)||1;
@@ -244,10 +265,15 @@ async function refresh(){
     if(d.retryWarning){$("retryCountdown").textContent=fmt(d.retrySeconds);
       $("retryLabel").textContent=d.retryManual?"User-scheduled retry at "+String(d.retryHour).padStart(2,"0")+":"+String(d.retryMinute).padStart(2,"0"):"Next automatic retry";}
     if(!tankDirty) {
-    for(const [id,val] of Object.entries({on:d.autoOn,off:d.autoOff,mins:d.overrideMinutes,height:d.height,capacity:d.capacity,tankCount:d.tankCount})){
-      if(document.activeElement!==$(id))$(id).value=val;
+      for(const [id,val] of Object.entries({
+        height:d.height,capacity:d.capacity,tankCount:d.tankCount
+      })) if(document.activeElement!==$(id))$(id).value=val;
+      updateTankPreview();
     }
-    updateTankPreview();
+    if(!operatingDirty) {
+      for(const [id,val] of Object.entries({
+        on:d.autoOn,off:d.autoOff,mins:d.overrideMinutes
+      })) if(document.activeElement!==$(id))$(id).value=val;
     }
   }catch(err){$("net").textContent="Connection lost";}
 }
@@ -261,18 +287,33 @@ $("pumpStop").onclick=()=>act("/api/pump/stop",{},$("pumpmsg"));
 $("autoOn").onclick=()=>act("/api/auto",{enabled:"1"},$("pumpmsg"));
 $("autoOff").onclick=()=>act("/api/auto",{enabled:"0"},$("pumpmsg"));
 $("tankForm").onsubmit=async e=>{
- e.preventDefault();if(adminRequired())return;
- const o={on:$("on").value,off:$("off").value,minutes:$("mins").value,
- height:$("height").value,capacity:$("capacity").value,tankCount:$("tankCount").value};
+ e.preventDefault();
+ if(adminRequired())return;
+ const o={
+   height:$("height").value,capacity:$("capacity").value,
+   tankCount:$("tankCount").value
+ };
  const count=Number(o.tankCount),capacity=Number(o.capacity);
  if(!Number.isInteger(count)||count<1||count>8||!Number.isFinite(capacity)||capacity<=0){
-  $("settingsmsg").textContent="Enter a valid number of tanks and total capacity.";return;
+   $("settingsmsg").textContent="Enter valid tank count and total capacity.";return;
  }
  try{
-  $("settingsmsg").textContent=await request("/api/settings","POST",o);
-  tankDirty=false;
-  await refresh();
+   $("settingsmsg").textContent=await request("/api/settings","POST",o);
+   tankDirty=false;await refresh();
  }catch(err){$("settingsmsg").textContent="Save failed: "+err.message;}
+};
+$("operatingForm").onsubmit=async e=>{
+ e.preventDefault();
+ const o={on:$("on").value,off:$("off").value,minutes:$("mins").value};
+ const on=Number(o.on),off=Number(o.off),minutes=Number(o.minutes);
+ if(!Number.isFinite(on)||on<0||on>99||!Number.isFinite(off)||off>100||
+    off-on<1||!Number.isInteger(minutes)||minutes<1||minutes>120){
+   $("operatingMsg").textContent="Check the ON/OFF thresholds and duration.";return;
+ }
+ try{
+   $("operatingMsg").textContent=await request("/api/operating-settings","POST",o);
+   operatingDirty=false;await refresh();
+ }catch(err){$("operatingMsg").textContent="Save failed: "+err.message;}
 };
 // The ESP32 is authoritative. Editing a form temporarily pauses sync so
 // background reads never replace values the user is currently entering.

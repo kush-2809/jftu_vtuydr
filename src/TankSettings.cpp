@@ -8,10 +8,20 @@
 // ==========================================
 // TANK SETTINGS + WATER LEVEL CALCULATION
 // ==========================================
+// Aggregate capacity assumes connected tanks have a common level.
+static uint8_t configuredTankCount = 1;
+uint8_t tankConfiguredCount() { return configuredTankCount; }
+void tankSetConfiguredCount(uint8_t count) {
+  if (count < 1 || count > 8) return;
+  configuredTankCount = count;
+}
+
 
 void loadTankSettings() {
   tankPrefs.begin("tank-config", false);
   tankHeightCm = tankPrefs.getFloat("height", 150.0f);
+  configuredTankCount = tankPrefs.getUChar("count", 1);
+  if (configuredTankCount < 1 || configuredTankCount > 8) configuredTankCount = 1;
   tankCapacityLitres = tankPrefs.getFloat("capacity", 1000.0f);
   pumpAutoOnLevel = tankPrefs.getFloat("auto-on", 30.0f);
   pumpAutoOffLevel = tankPrefs.getFloat("auto-off", 95.0f);
@@ -70,6 +80,7 @@ void loadTankSettings() {
 
 void saveTankSettings() {
   tankPrefs.putFloat("height", tankHeightCm);
+  tankPrefs.putUChar("count", configuredTankCount);
   tankPrefs.putFloat("capacity", tankCapacityLitres);
   tankPrefs.putFloat("auto-on", pumpAutoOnLevel);
   tankPrefs.putFloat("auto-off", pumpAutoOffLevel);

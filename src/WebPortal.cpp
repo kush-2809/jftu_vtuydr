@@ -123,43 +123,70 @@ void handleAutoMode() {
   sendMessage(200, enabled ? "Automatic mode enabled." : "Automatic mode disabled; pump output commanded OFF.");
 }
 
+// Installation/calibration remains protected by the administrator password.
 void handleSettings() {
   if (!portalAuthCheck(server)) return;
-  if (!server.hasArg("on") || !server.hasArg("off") || !server.hasArg("minutes") ||
-      !server.hasArg("height") || !server.hasArg("capacity") || !server.hasArg("tankCount")) {
-    sendMessage(400, "All settings are required."); return;
+  if (!server.hasArg("height") || !server.hasArg("capacity") ||
+      !server.hasArg("tankCount")) {
+    sendMessage(400, "Tank count, height and capacity are required."); return;
   }
-  float onLevel = server.arg("on").toFloat();
-  float offLevel = server.arg("off").toFloat();
-  long minutes = server.arg("minutes").toInt();
-  float height = server.arg("height").toFloat();
-  float capacity = server.arg("capacity").toFloat();
   const String tankCountText = server.arg("tankCount");
   const long requestedCount = tankCountText.toInt();
-  if (tankCountText.length() == 0 || requestedCount < 1 || requestedCount > 8 ||
+  if (requestedCount < 1 || requestedCount > 8 ||
       tankCountText != String(requestedCount)) {
     sendMessage(400, "Tank count must be a whole number from 1 to 8."); return;
   }
-  if (!isfinite(onLevel) || !isfinite(offLevel) || onLevel < 0 || onLevel > 99 ||
-      offLevel < 1 || offLevel > 100 || offLevel - onLevel < 1.0f) {
-    sendMessage(400, "Invalid thresholds: OFF must be at least 1% higher than ON."); return;
-  }
-  if (minutes < (long)MIN_OVERRIDE_MINUTES || minutes > (long)MAX_OVERRIDE_MINUTES) {
-    sendMessage(400, "Override timeout must be between 1 and 120 minutes."); return;
-  }
+  const float height = server.arg("height").toFloat();
+  const float capacity = server.arg("capacity").toFloat();
   if (!isfinite(height) || height < MIN_TANK_HEIGHT_CM || height > MAX_TANK_HEIGHT_CM ||
       !isfinite(capacity) || capacity < 1 || capacity > 100000) {
     sendMessage(400, "Tank height or capacity is outside the allowed range."); return;
   }
-  pumpAutoOnLevel = onLevel;
-  pumpAutoOffLevel = offLevel;
-  manualOverrideMinutes = (uint32_t)minutes;
   tankHeightCm = height;
   tankCapacityLitres = capacity;
   tankSetConfiguredCount((uint8_t)requestedCount);
   saveTankSettings();
   if (sensorReadingValid && remoteConnected) calculateWaterLevel(distanceCm);
-  sendMessage(200, "Settings saved to ESP32 non-volatile storage.");
+  sendMessage(200, "Tank installation settings saved.");
+}
+
+// Everyday Settings tab: intentionally separate from administrator calibration.
+// Restricted to ON/OFF percentages and manual override duration only.
+void handleOperatingSettings() {
+  if (!server.hasArg("on") || !server.hasArg("off") || !server.hasArg("minutes")) {
+    sendMessage(400, "Auto thresholds and override minutes are required."); return;
+  }
+  const String onText = server.arg("on");
+  const String offText = server.arg("off");
+  const String minText = server.arg("minutes");
+  char *end = nullptr;
+  const float onLevel = strtof(onText.c_str(), &end);
+  if (end == onText.c_str() || *end != '\0') {
+    sendMessage(400, "Invalid Auto ON percentage."); return;
+  }
+  const float offLevel = strtof(offText.c_str(), &end);
+  if (end == offText.c_str() || *end != '\0') {
+    sendMessage(400, "Invalid Auto OFF percentage."); return;
+  }
+  const long minutes = strtol(minText.c_str(), &end, 10);
+  if (end == minText.c_str() || *end != '\0' ||
+      minutes < (long)MIN_OVERRIDE_MINUTES || minutes > (long)MAX_OVERRIDE_MINUTES) {
+    sendMessage(400, "Manual override duration must be 1-120 whole minutes."); return;
+  }
+  if (!isfinite(onLevel) || !isfinite(offLevel) ||
+      onLevel < 0.0f || onLevel > 99.0f ||
+      offLevel < 1.0f || offLevel > 100.0f ||
+      offLevel - onLevel < 1.0f) {
+    sendMessage(400, "OFF must be at least 1% above ON (0-99 / 1-100)."); return;
+  }
+  pumpAutoOnLevel = onLevel;
+  pumpAutoOffLevel = offLevel;
+  manualOverrideMinutes = (uint32_t)minutes;
+  draftAutoOnLevel = pumpAutoOnLevel;
+  draftAutoOffLevel = pumpAutoOffLevel;
+  draftOverrideMinutes = manualOverrideMinutes;
+  saveTankSettings();
+  sendMessage(200, "Operating settings saved to SmartTank.");
 }
 
 void handleNetworkConfigGet() {
@@ -493,6 +520,7 @@ void webPortalConfigure() {
   server.on("/api/pump/stop", HTTP_POST, handlePumpStop);
   server.on("/api/auto", HTTP_POST, handleAutoMode);
   server.on("/api/settings", HTTP_POST, handleSettings);
+  server.on("/api/operating-settings", HTTP_POST, handleOperatingSettings);
   server.on(
     "/api/network-config",
     HTTP_GET,

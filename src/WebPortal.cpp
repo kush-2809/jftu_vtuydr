@@ -45,6 +45,7 @@ void handleStatus() {
   json += ",\"level\":" + String(waterLevelPercent, 1);
   json += ",\"volume\":" + String(waterVolumeLitres, 1);
   json += ",\"capacity\":" + String(tankCapacityLitres, 1);
+  json += ",\"tankCount\":" + String(tankConfiguredCount());
   json += ",\"height\":" + String(tankHeightCm, 1);
   json += ",\"pumpOn\":" + String(manualPumpState ? "true" : "false");
   json += ",\"override\":" + String(manualOverrideActive ? "true" : "false");
@@ -125,7 +126,7 @@ void handleAutoMode() {
 void handleSettings() {
   if (!portalAuthCheck(server)) return;
   if (!server.hasArg("on") || !server.hasArg("off") || !server.hasArg("minutes") ||
-      !server.hasArg("height") || !server.hasArg("capacity")) {
+      !server.hasArg("height") || !server.hasArg("capacity") || !server.hasArg("tankCount")) {
     sendMessage(400, "All settings are required."); return;
   }
   float onLevel = server.arg("on").toFloat();
@@ -133,6 +134,12 @@ void handleSettings() {
   long minutes = server.arg("minutes").toInt();
   float height = server.arg("height").toFloat();
   float capacity = server.arg("capacity").toFloat();
+  const String tankCountText = server.arg("tankCount");
+  const long requestedCount = tankCountText.toInt();
+  if (tankCountText.length() == 0 || requestedCount < 1 || requestedCount > 8 ||
+      tankCountText != String(requestedCount)) {
+    sendMessage(400, "Tank count must be a whole number from 1 to 8."); return;
+  }
   if (!isfinite(onLevel) || !isfinite(offLevel) || onLevel < 0 || onLevel > 99 ||
       offLevel < 1 || offLevel > 100 || offLevel - onLevel < 1.0f) {
     sendMessage(400, "Invalid thresholds: OFF must be at least 1% higher than ON."); return;
@@ -149,6 +156,7 @@ void handleSettings() {
   manualOverrideMinutes = (uint32_t)minutes;
   tankHeightCm = height;
   tankCapacityLitres = capacity;
+  tankSetConfiguredCount((uint8_t)requestedCount);
   saveTankSettings();
   if (sensorReadingValid && remoteConnected) calculateWaterLevel(distanceCm);
   sendMessage(200, "Settings saved to ESP32 non-volatile storage.");

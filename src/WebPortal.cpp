@@ -46,6 +46,7 @@ void handleStatus() {
   json += ",\"volume\":" + String(waterVolumeLitres, 1);
   json += ",\"capacity\":" + String(tankCapacityLitres, 1);
   json += ",\"tankCount\":" + String(tankConfiguredCount());
+  json += ",\"settingsRevision\":" + String(tankSettingsRevision());
   json += ",\"height\":" + String(tankHeightCm, 1);
   json += ",\"pumpOn\":" + String(manualPumpState ? "true" : "false");
   json += ",\"override\":" + String(manualOverrideActive ? "true" : "false");
@@ -160,6 +161,16 @@ void handleOperatingSettings() {
       server.header("X-SmartTank-Settings") != "1") {
     sendMessage(403, "Open SmartTank Settings to change operating limits.");
     return;
+  }
+  if (!server.hasArg("revision")) {
+    sendMessage(428, "Settings revision required. Reload the Settings tab."); return;
+  }
+  const String expectedText = server.arg("revision");
+  char* revisionEnd = nullptr;
+  const unsigned long expectedRevision = strtoul(expectedText.c_str(), &revisionEnd, 10);
+  if (expectedText.length() == 0 || revisionEnd == expectedText.c_str() ||
+      *revisionEnd != '\0' || expectedRevision != tankSettingsRevision()) {
+    sendMessage(409, "Settings changed on the TFT or another browser. Reload before saving."); return;
   }
   if (!server.hasArg("on") || !server.hasArg("off") || !server.hasArg("minutes")) {
     sendMessage(400, "Auto thresholds and override minutes are required."); return;

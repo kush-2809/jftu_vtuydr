@@ -11,6 +11,7 @@
 #include "PumpController.h"
 #include "TankSettings.h"
 #include "Management.h"
+#include "FeatureControl.h"
 #include "PortalAuth.h"
 #include "PortalHtml.h"
 #include "DisplayEngine.h"
@@ -51,6 +52,10 @@ void handleStatus() {
   json += ",\"pumpOn\":" + String(manualPumpState ? "true" : "false");
   json += ",\"override\":" + String(manualOverrideActive ? "true" : "false");
   json += ",\"overrideMinutes\":" + String(manualOverrideMinutes);
+  json += ",\"manualRemainingSeconds\":" + String(manualOverrideRemainingSeconds());
+  json += ",\"manualAllowed\":" + String(managementAllowsManual() ? "true" : "false");
+  json += ",\"ssrEnabled\":" + String(featureSsrEnabled() ? "true" : "false");
+  json += ",\"managementMode\":\"" + String(managementModeName(managementMode())) + "\"";
   json += ",\"autoEnabled\":" + String(managementAllowsAuto() ? "true" : "false");
   json += ",\"autoOn\":" + String(pumpAutoOnLevel, 1);
   json += ",\"autoOff\":" + String(pumpAutoOffLevel, 1);
@@ -77,33 +82,58 @@ void handleStatus() {
   server.send(200, "application/json", json);
 }
 
+// These controls deliberately require no administrator password, matching
+// the portal UX. A custom same-origin request header stops simple cross-site
+// HTML form POSTs. Hardware interlocks remain authoritative.
+bool localPumpActionAllowed() {
+  if (!server.hasHeader("X-SmartTank-Control") ||
+      server.header("X-SmartTank-Control") != "1") {
+    sendMessage(403, "Use the SmartTank portal to control the pump."); return false;
+  }
+  return true;
+}
+
 void handlePumpStart() {
-  if (!portalAuthCheck(server)) return;
+  if (!localPumpActionAllowed()) return;
+  if (manualOverrideActive) {
+    sendMessage(200, "Manual pump already running."); return;
+  }
+  if (!managementAllowsManual()) {
+    sendMessage(409, "Manual mode disabled. On TFT: Management > Operating Mode > Auto + manual or All functions."); return;
+  }
+  if (!featureSsrEnabled()) {
+    sendMessage(409, "SSR output is disabled. Unlock Configuration and enable SSR only after safe wiring checks."); return;
+  }
   if (!remoteConnected || !sensorReadingValid || !waterLevelValid) {
-    sendMessage(409, "Cannot start: valid LoRa sensor data is required.");
-    return;
+    sendMessage(409, "No valid LoRa tank-level data. Manual pump cannot start safely."); return;
+  }
+  if (waterLevelPercent >= pumpAutoOffLevel) {
+    sendMessage(409, "Tank is at the automatic OFF threshold. Manual pump blocked to prevent overflow."); return;
   }
   if (autoPumpState == AUTO_FILLING || manualPumpState) {
-    sendMessage(409, "Pump is already running under controller control.");
-    return;
+    sendMessage(409, "Pump is already controlled by automatic or scheduled filling."); return;
+  }
+  if (autoPumpState == AUTO_RETRY_WAIT) {
+    sendMessage(409, "Water supply retry/wait is active. Manual start blocked by dry-run protection."); return;
   }
   startManualOverride();
-  if (manualOverrideActive) sendMessage(200, "Manual override started.");
-  else sendMessage(409, "Manual override was not started. Check Management mode, sensor link and pump state.");
+  if (manualOverrideActive && manualPumpState)
+    sendMessage(200, "Manual override started.");
+  else
+    sendMessage(409, "Start refused by controller safety checks. Inspect sensor and Management settings.");
 }
 
 void handlePumpStop() {
-  if (!portalAuthCheck(server)) return;
+  if (!localPumpActionAllowed()) return;
   if (!manualOverrideActive) {
-    sendMessage(409, "No manual override is active. Automatic filling is not stopped by this button.");
-    return;
+    sendMessage(409, "No manual override active. Automatic filling is unaffected."); return;
   }
   stopManualOverride("web dashboard stop");
   sendMessage(200, "Manual override stopped.");
 }
 
 void handleAutoMode() {
-  if (!portalAuthCheck(server)) return;
+  if (!localPumpActionAllowed()) return;
   if (!server.hasArg("enabled")) { sendMessage(400, "Missing enabled parameter."); return; }
   bool enabled = server.arg("enabled") == "1";
   if (enabled && !managementModeSupportsAuto()) {
@@ -519,8 +549,8 @@ void handleSaveWiFi() {
 void webPortalConfigure() {
   if (portalConfigured) return;
   portalAuthBegin();
-  const char* headers[] = {"Cookie", "X-SmartTank-Settings"};
-  server.collectHeaders(headers, 2);
+  const char* headers[] = {"Cookie", "X-SmartTank-Settings", "X-SmartTank-Control"};
+  server.collectHeaders(headers, 3);
   server.on("/", HTTP_GET, handleRoot);
   server.on("/api/admin/status", HTTP_GET, handleAdminStatus);
   server.on("/api/admin/login", HTTP_POST, handleAdminLogin);

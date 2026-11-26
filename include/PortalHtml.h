@@ -131,7 +131,9 @@ h1{margin:0;font-size:clamp(26px,3vw,36px);letter-spacing:-.04em}h2{font-size:17
 <div><label for="mins">Manual override maximum (minutes)</label><input id="mins" type="number" min="1" max="120" step="1" required></div>
 </div>
 <div class="help">Safety requirement: OFF must exceed ON by at least 1%. Manual operation still follows the pump controller's safety limits.</div>
-<button type="submit">Save operating settings</button>
+<div class="actions"><button type="submit">Save operating settings</button>
+<button type="button" class="alt" id="reloadOperating">Reload from ESP32</button>
+<button type="button" class="alt" id="downloadBackup">Download settings backup</button></div>
 <div id="operatingMsg" class="message" role="status"></div>
 </form>
 </div>
@@ -275,6 +277,8 @@ for(const id of ["on","off"]){
 }
 
 let operatingDirty=false;
+let operatingRevision=null;
+let latestSettingsRevision=null;
 $("operatingForm").addEventListener("input",()=>operatingDirty=true);
 $("operatingForm").addEventListener("change",()=>operatingDirty=true);
 let tankDirty=false;
@@ -303,7 +307,10 @@ function showAuth(mode){
 function switchPage(id){
  document.querySelectorAll(".page").forEach(el=>el.classList.toggle("active",el.id===id));
  document.querySelectorAll("[data-page]").forEach(el=>el.classList.toggle("active",el.dataset.page===id));
- if(id==="settings"){operatingDirty=false;refresh();}
+ if(id==="settings"){
+  // Do not silently discard an in-progress edit when navigating tabs.
+  refresh();
+}
  if(id==="display")loadDisplay(true);
  if(id==="network")loadNetwork().catch(()=>{});
  if(id==="location")loadLocation().catch(()=>{});
@@ -405,11 +412,15 @@ async function refresh(){
       })) if(document.activeElement!==$(id))$(id).value=val;
       updateTankPreview();
     }
-    if(!operatingDirty) {
+    latestSettingsRevision=Number(d.settingsRevision);
+    if(!operatingDirty){
+      operatingRevision=latestSettingsRevision;
       for(const [id,val] of Object.entries({
         on:d.autoOn,off:d.autoOff,mins:d.overrideMinutes
       })) if(document.activeElement!==$(id))$(id).value=val;
       renderThresholdMarkers();
+    }else if(operatingRevision!==latestSettingsRevision){
+      $("operatingMsg").textContent="Settings were changed on the TFT or another phone. Reload before saving to avoid overwriting them.";
     }
   }catch(err){
     $("net").textContent="Connection lost";
@@ -445,9 +456,41 @@ $("tankForm").onsubmit=async e=>{
    tankDirty=false;await refresh();
  }catch(err){$("settingsmsg").textContent="Save failed: "+err.message;}
 };
+$("reloadOperating").onclick=()=>{
+ if(operatingDirty&&!confirm("Discard unsaved edits and reload settings from the ESP32?"))return;
+ operatingDirty=false;
+ operatingRevision=null;
+ $("operatingMsg").textContent="Reloading saved settings…";
+ refresh();
+};
+$("downloadBackup").onclick=async()=>{
+ try{
+  const d=await request("/api/status");
+  const backup={
+   format:"SmartTankSettingsBackup",version:1,
+   savedAt:new Date().toISOString(),
+   tankCount:d.tankCount,capacityLitres:d.capacity,heightCm:d.height,
+   autoOn:d.autoOn,autoOff:d.autoOff,overrideMinutes:d.overrideMinutes,
+   autoEnabled:d.autoEnabled,revision:d.settingsRevision
+  };
+  const blob=new Blob([JSON.stringify(backup,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download="smarttank-settings-backup.json";
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  $("operatingMsg").textContent="Backup downloaded. Keep this file before firmware/partition changes.";
+ }catch(err){$("operatingMsg").textContent="Backup failed: "+err.message;}
+};
 $("operatingForm").onsubmit=async e=>{
  e.preventDefault();
- const o={on:$("on").value,off:$("off").value,minutes:$("mins").value};
+ if(!Number.isInteger(operatingRevision)){
+   $("operatingMsg").textContent="Controller settings not loaded yet. Reload Settings first.";return;
+ }
+ if(latestSettingsRevision!==operatingRevision){
+   $("operatingMsg").textContent="Another device updated these values. Reload before saving.";return;
+ }
+ const o={on:$("on").value,off:$("off").value,minutes:$("mins").value,
+   revision:String(operatingRevision)};
  const on=Number(o.on),off=Number(o.off),minutes=Number(o.minutes);
  if(!Number.isFinite(on)||on<0||on>99||!Number.isFinite(off)||off>100||
     off-on<1||!Number.isInteger(minutes)||minutes<1||minutes>120){

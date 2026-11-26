@@ -22,6 +22,7 @@
 #include "TimeService.h"
 #include "WeatherService.h"
 #include <Preferences.h>
+#include <LittleFS.h>
 
 namespace {
 WebServer server(80);
@@ -30,9 +31,28 @@ const byte DNS_PORT = 53;
 bool portalConfigured = false;
 bool portalStarted = false;
 bool dnsStarted = false;
+bool brandFsReady = false;
 
 void sendMessage(int code, const String& message) {
   server.send(code, "text/plain; charset=utf-8", message);
+}
+
+// Optional product branding lives in LittleFS, independent of the settings NVS.
+// NEVER format the filesystem on mount failure: avoid user-data loss.
+void handleBrandAsset(const char* path, const char* mime) {
+  if (!brandFsReady || !LittleFS.exists(path)) {
+    server.send(404, "text/plain", "Branding asset not installed");
+    return;
+  }
+  File file = LittleFS.open(path, "r");
+  if (!file || file.isDirectory()) {
+    server.send(404, "text/plain", "Branding asset unavailable");
+    if (file) file.close();
+    return;
+  }
+  server.sendHeader("Cache-Control", "public, max-age=3600");
+  server.streamFile(file, mime);
+  file.close();
 }
 
 void handleRoot() {
@@ -549,9 +569,14 @@ void handleSaveWiFi() {
 void webPortalConfigure() {
   if (portalConfigured) return;
   portalAuthBegin();
+  // No format-on-failure: keep existing NVS and flash data intact.
+  brandFsReady = LittleFS.begin(false);
+  if (!brandFsReady) Serial.println("[Portal] LittleFS unavailable; logo falls back to ST.");
   const char* headers[] = {"Cookie", "X-SmartTank-Settings", "X-SmartTank-Control"};
   server.collectHeaders(headers, 3);
   server.on("/", HTTP_GET, handleRoot);
+  server.on("/logo.png", HTTP_GET, [](){ handleBrandAsset("/logo.png", "image/png"); });
+  server.on("/favicon.png", HTTP_GET, [](){ handleBrandAsset("/favicon.png", "image/png"); });
   server.on("/api/admin/status", HTTP_GET, handleAdminStatus);
   server.on("/api/admin/login", HTTP_POST, handleAdminLogin);
   server.on("/api/admin/change", HTTP_POST, handleAdminChange);
